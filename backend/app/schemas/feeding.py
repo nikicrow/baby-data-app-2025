@@ -35,10 +35,11 @@ class FeedingSessionBase(BaseModel):
 
     @model_validator(mode='after')
     def check_right_or_left_breast_duration(self) -> 'FeedingSessionBase':
-        if self.feeding_type == FeedingType.BREASTFEEDING:
+        if self.feeding_type == FeedingType.BREAST:
             if (self.left_breast_duration is None or self.left_breast_duration == 0) and \
                (self.right_breast_duration is None or self.right_breast_duration == 0):
                 raise ValueError('At least one of left_breast_duration or right_breast_duration must be provided for breastfeeding')
+        return self
             
     # Add a validation method to check that if we feed by bottle then offered vol > 0
     @model_validator(mode='after')
