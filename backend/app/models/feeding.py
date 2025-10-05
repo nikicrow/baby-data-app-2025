@@ -33,7 +33,6 @@ class FeedingSession(Base):
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
     feeding_type = Column(Enum(FeedingType), nullable=False)
-    duration_minutes = Column(Integer, nullable=True)  # Calculated field
 
     # Breastfeeding specific fields
     breast_started = Column(Enum(BreastSide), nullable=True)
@@ -54,17 +53,6 @@ class FeedingSession(Base):
 
     # Relationships
     baby = relationship("BabyProfile", back_populates="feeding_sessions")
-
-    def calculate_duration(self):
-        """Calculate duration if end_time is set"""
-        if self.end_time and self.start_time:
-            delta = self.end_time - self.start_time
-            self.duration_minutes = int(delta.total_seconds() / 60)
-        elif self.feeding_type == FeedingType.BREAST:
-            # For breastfeeding, sum the breast durations
-            left_duration = self.left_breast_duration or 0
-            right_duration = self.right_breast_duration or 0
-            self.duration_minutes = left_duration + right_duration
 
     def __repr__(self):
         return f"<FeedingSession(baby_id='{self.baby_id}', type='{self.feeding_type}', start='{self.start_time}')>"

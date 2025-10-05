@@ -5,15 +5,17 @@ Modern baby data tracking API built with FastAPI.
 ## Setup
 
 1. **Install uv** (if not already installed):
+
    ```bash
    # Windows
    pip install uv
-   
+
    # Or use the official installer
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
 2. **Create and activate virtual environment:**
+
    ```bash
    uv venv
    # Windows
@@ -23,16 +25,19 @@ Modern baby data tracking API built with FastAPI.
    ```
 
 3. **Install dependencies:**
+
    ```bash
    uv pip install -e .
    ```
 
 4. **Install development dependencies:**
+
    ```bash
    uv pip install -e ".[dev]"
    ```
 
 5. **Set up environment variables:**
+
    ```bash
    cp .env.example .env
    # Edit .env with your actual database credentials
@@ -50,6 +55,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at:
+
 - **API**: http://localhost:8000
 - **Interactive docs**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
@@ -57,17 +63,34 @@ The API will be available at:
 ## Development
 
 ### Code formatting
+
 ```bash
 black app/
 isort app/
 ```
 
 ### Type checking
+
 ```bash
 mypy app/
 ```
 
 ### Running tests
+
 ```bash
 pytest
 ```
+
+# How to interact with the backend api
+
+To start the backend server run
+
+```
+cd "c:\Users\benny\Documents\coding\niki-claude-practice\backend" && py -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Once server is Running
+
+- API: http://localhost:8000
+- Interactive Docs in swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc

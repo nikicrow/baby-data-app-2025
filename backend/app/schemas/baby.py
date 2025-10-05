@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, PositiveFloat
+from pydantic import BaseModel, Field, PositiveFloat, field_validator
 
 
 class BabyProfileBase(BaseModel):
@@ -10,9 +10,15 @@ class BabyProfileBase(BaseModel):
     birth_weight: Optional[PositiveFloat] = Field(None, gt=0, description="Birth weight in kg")
     birth_length: Optional[PositiveFloat] = Field(None, gt=0, description="Birth length in cm")
     birth_head_circumference: Optional[PositiveFloat] = Field(None, gt=0, description="Birth head circumference in cm")
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
+    gender: Optional[str] = Field(None, pattern="^(male|female|other)$")
     timezone: str = Field(default="Australia/Sydney", max_length=50)
     notes: Optional[str] = None
+
+    @field_validator('date_of_birth')
+    def validate_date_of_birth(cls, v):
+        if v > date.today():
+            raise ValueError("date_of_birth cannot be in the future")
+        return v
 
 
 class BabyProfileCreate(BabyProfileBase):
@@ -24,7 +30,7 @@ class BabyProfileUpdate(BaseModel):
     birth_weight: Optional[PositiveFloat] = Field(None, gt=0)
     birth_length: Optional[PositiveFloat] = Field(None, gt=0)
     birth_head_circumference: Optional[PositiveFloat] = Field(None, gt=0)
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
+    gender: Optional[str] = Field(None, pattern="^(male|female|other)$")
     timezone: Optional[str] = Field(None, max_length=50)
     notes: Optional[str] = None
     is_active: Optional[bool] = None

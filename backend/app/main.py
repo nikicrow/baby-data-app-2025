@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 
-# Import routers (will add these as we build them)
-# from app.api import auth, babies, feeding, sleep, diaper, growth, health
+# Import routers
+from app.api import babies, feeding, sleep, diaper, growth, health
 
 app = FastAPI(
     title="Baby Data API",
@@ -29,11 +29,10 @@ async def root():
 async def health_check():
     return {"status": "healthy", "version": "0.1.0"}
 
-# Include routers (will uncomment as we build them)
-# app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
-# app.include_router(babies.router, prefix=f"{settings.API_V1_STR}/babies", tags=["babies"])
-# app.include_router(feeding.router, prefix=f"{settings.API_V1_STR}/feeding", tags=["feeding"])
-# app.include_router(sleep.router, prefix=f"{settings.API_V1_STR}/sleep", tags=["sleep"])
-# app.include_router(diaper.router, prefix=f"{settings.API_V1_STR}/diaper", tags=["diaper"])
-# app.include_router(growth.router, prefix=f"{settings.API_V1_STR}/growth", tags=["growth"])
-# app.include_router(health.router, prefix=f"{settings.API_V1_STR}/health", tags=["health"])
+# Include routers
+app.include_router(babies.router, prefix=f"{settings.API_V1_STR}/babies", tags=["babies"])
+app.include_router(feeding.router, prefix=f"{settings.API_V1_STR}/feeding", tags=["feeding"])
+app.include_router(sleep.router, prefix=f"{settings.API_V1_STR}/sleep", tags=["sleep"])
+app.include_router(diaper.router, prefix=f"{settings.API_V1_STR}/diaper", tags=["diaper"])
+app.include_router(growth.router, prefix=f"{settings.API_V1_STR}/growth", tags=["growth"])
+app.include_router(health.router, prefix=f"{settings.API_V1_STR}/health", tags=["health"])
