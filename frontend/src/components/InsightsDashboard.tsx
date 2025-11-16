@@ -1,78 +1,119 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   ResponsiveContainer,
   LineChart,
   Line,
   PieChart,
   Pie,
-  Cell,
-  ScatterChart,
-  Scatter
+  Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
-import { SleepAnalytics } from "./analytics/SleepAnalytics";
-import { FeedAnalytics } from "./analytics/FeedAnalytics";
-import { NappyAnalytics } from "./analytics/NappyAnalytics";
-import { GrowthAnalytics } from "./analytics/GrowthAnalytics";
+import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale, Loader2 } from "lucide-react";
+import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
+import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
+import { format, isToday, subDays, startOfDay } from 'date-fns';
 
 interface InsightsDashboardProps {
-  activities: any[];
+  babyId: string;
+  refreshTrigger?: number;
 }
 
-export function InsightsDashboard({ activities }: InsightsDashboardProps) {
+export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardProps) {
   const [activeAnalyticsTab, setActiveAnalyticsTab] = useState('overview');
-  // Mock data for comprehensive analytics
-  const weeklyFeedData = [
-    { day: 'Mon', feeds: 8, duration: 180 },
-    { day: 'Tue', feeds: 9, duration: 195 },
-    { day: 'Wed', feeds: 7, duration: 165 },
-    { day: 'Thu', feeds: 8, duration: 175 },
-    { day: 'Fri', feeds: 9, duration: 190 },
-    { day: 'Sat', feeds: 8, duration: 170 },
-    { day: 'Sun', feeds: 7, duration: 160 },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [feedings, setFeedings] = useState<FeedingSession[]>([]);
+  const [sleeps, setSleeps] = useState<SleepSession[]>([]);
+  const [diapers, setDiapers] = useState<DiaperEvent[]>([]);
+  const [growth, setGrowth] = useState<GrowthMeasurement[]>([]);
 
-  const sleepPatternData = [
-    { time: '6AM', duration: 45 },
-    { time: '9AM', duration: 90 },
-    { time: '1PM', duration: 120 },
-    { time: '4PM', duration: 30 },
-    { time: '7PM', duration: 480 }, // Night sleep
-  ];
+  useEffect(() => {
+    fetchData();
+  }, [babyId, refreshTrigger]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [feedData, sleepData, diaperData, growthData] = await Promise.all([
+        feedingApi.getAll({ baby_id: babyId, limit: 100 }),
+        sleepApi.getAll({ baby_id: babyId, limit: 100 }),
+        diaperApi.getAll({ baby_id: babyId, limit: 100 }),
+        growthApi.getAll({ baby_id: babyId, limit: 20 }),
+      ]);
+
+      setFeedings(feedData);
+      setSleeps(sleepData);
+      setDiapers(diaperData);
+      setGrowth(growthData);
+    } catch (error) {
+      console.error('Failed to fetch analytics data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate today's stats
+  const todayFeeds = feedings.filter(f => isToday(new Date(f.start_time)));
+  const todaySleeps = sleeps.filter(s => isToday(new Date(s.sleep_start)));
+  const todayDiapers = diapers.filter(d => isToday(new Date(d.timestamp)));
+
+  const totalSleepToday = todaySleeps.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const avgSleepHours = totalSleepToday / 60;
+
+  // Calculate weekly feed data
+  const weeklyFeedData = Array.from({ length: 7 }, (_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const dayFeeds = feedings.filter(f => {
+      const feedDate = startOfDay(new Date(f.start_time));
+      return feedDate.getTime() === startOfDay(date).getTime();
+    });
+
+    return {
+      day: format(date, 'EEE'),
+      feeds: dayFeeds.length,
+      duration: dayFeeds.reduce((sum, f) => sum + (f.duration_minutes || 0), 0)
+    };
+  });
+
+  // Calculate feed type distribution
+  const breastFeeds = feedings.filter(f => f.feeding_type === 'breast').length;
+  const bottleFeeds = feedings.filter(f => f.feeding_type === 'bottle').length;
+  const solidFeeds = feedings.filter(f => f.feeding_type === 'solid').length;
+  const total = breastFeeds + bottleFeeds + solidFeeds || 1;
 
   const feedTypeData = [
-    { name: 'Breast', value: 65, color: '#8884d8' },
-    { name: 'Bottle', value: 25, color: '#82ca9d' },
-    { name: 'Pump', value: 10, color: '#ffc658' },
-  ];
+    { name: 'Breast', value: breastFeeds, color: '#8884d8', percentage: Math.round((breastFeeds / total) * 100) },
+    { name: 'Bottle', value: bottleFeeds, color: '#82ca9d', percentage: Math.round((bottleFeeds / total) * 100) },
+    { name: 'Solid', value: solidFeeds, color: '#ffc658', percentage: Math.round((solidFeeds / total) * 100) },
+  ].filter(item => item.value > 0);
 
-  const correlationData = [
-    { feeds: 6, nappies: 4 },
-    { feeds: 7, nappies: 5 },
-    { feeds: 8, nappies: 6 },
-    { feeds: 9, nappies: 7 },
-    { feeds: 8, nappies: 6 },
-    { feeds: 7, nappies: 5 },
-    { feeds: 9, nappies: 8 },
-  ];
+  // Calculate growth trend data
+  const growthData = growth
+    .sort((a, b) => new Date(a.measurement_date).getTime() - new Date(b.measurement_date).getTime())
+    .slice(-6)
+    .map(g => ({
+      date: format(new Date(g.measurement_date), 'MMM d'),
+      weight: g.weight_kg || 0,
+      height: g.length_cm || 0
+    }));
 
-  const growthData = [
-    { week: 'Week 1', weight: 3.2, height: 48 },
-    { week: 'Week 2', weight: 3.4, height: 49 },
-    { week: 'Week 3', weight: 3.6, height: 50 },
-    { week: 'Week 4', weight: 3.9, height: 51 },
-    { week: 'Week 5', weight: 4.1, height: 52 },
-    { week: 'Week 6', weight: 4.3, height: 53 },
-  ];
+  const latestWeight = growth.length > 0 && growth[0].weight_kg
+    ? `${growth[0].weight_kg}kg`
+    : 'N/A';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -110,13 +151,12 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Today's Feeds</p>
-                      <p className="text-2xl font-bold">8</p>
+                      <p className="text-2xl font-bold">{todayFeeds.length}</p>
                     </div>
                     <Baby className="w-8 h-8 text-blue-600" />
                   </div>
-                  <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">+12% vs yesterday</span>
+                  <div className="mt-2">
+                    <span className="text-sm text-muted-foreground">Total this week: {feedings.length}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -126,13 +166,12 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Sleep Today</p>
-                      <p className="text-2xl font-bold">12h</p>
+                      <p className="text-2xl font-bold">{avgSleepHours.toFixed(1)}h</p>
                     </div>
                     <Moon className="w-8 h-8 text-purple-600" />
                   </div>
-                  <div className="flex items-center gap-1 mt-2">
-                    <TrendingDown className="w-4 h-4 text-red-600" />
-                    <span className="text-sm text-red-600">-30min vs avg</span>
+                  <div className="mt-2">
+                    <span className="text-sm text-muted-foreground">{todaySleeps.length} sleep sessions</span>
                   </div>
                 </CardContent>
               </Card>
@@ -142,13 +181,12 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Nappies Today</p>
-                      <p className="text-2xl font-bold">6</p>
+                      <p className="text-2xl font-bold">{todayDiapers.length}</p>
                     </div>
                     <Droplets className="w-8 h-8 text-orange-600" />
                   </div>
-                  <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">Normal range</span>
+                  <div className="mt-2">
+                    <span className="text-sm text-muted-foreground">Normal range</span>
                   </div>
                 </CardContent>
               </Card>
@@ -157,233 +195,210 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                 <CardContent className="p-4 lg:p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Avg Wake Window</p>
-                      <p className="text-2xl font-bold">2h 45m</p>
+                      <p className="text-sm text-muted-foreground">Latest Weight</p>
+                      <p className="text-2xl font-bold">{latestWeight}</p>
                     </div>
-                    <Clock className="w-8 h-8 text-purple-600" />
+                    <Scale className="w-8 h-8 text-green-600" />
                   </div>
-                  <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">Ideal for age</span>
+                  <div className="mt-2">
+                    <span className="text-sm text-muted-foreground">{growth.length} measurements</span>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-      {/* Charts Grid - Responsive Layout */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Weekly Feed Pattern */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Weekly Feeding Pattern</CardTitle>
-            <CardDescription>Number of feeds and total feeding time per day</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={weeklyFeedData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Bar dataKey="feeds" fill="#8884d8" radius={4} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>Avg: 8.0 feeds/day</span>
-              <span>Total: 3.1h feeding time</span>
-            </div>
-          </CardContent>
-        </Card>
+            {/* Charts Grid */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Weekly Feed Pattern */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Weekly Feeding Pattern</CardTitle>
+                  <CardDescription>Number of feeds per day over the last week</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {weeklyFeedData.some(d => d.feeds > 0) ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={weeklyFeedData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="day" />
+                          <YAxis />
+                          <Bar dataKey="feeds" fill="#8884d8" radius={4} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
+                        <span>Avg: {(weeklyFeedData.reduce((sum, d) => sum + d.feeds, 0) / 7).toFixed(1)} feeds/day</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-muted-foreground">
+                      <p>No feeding data for the past week</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-        {/* Sleep Analysis */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sleep Pattern Analysis</CardTitle>
-            <CardDescription>Daily sleep duration by time of day</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={sleepPatternData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis />
-                <Line 
-                  type="monotone" 
-                  dataKey="duration" 
-                  stroke="#8884d8" 
-                  strokeWidth={3}
-                  dot={{ fill: '#8884d8', strokeWidth: 2, r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-3 gap-4 mt-4">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">Longest Stretch</p>
-                <p className="font-semibold">8h 30min</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">Avg Nap</p>
-                <p className="font-semibold">1h 15min</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">Wake Windows</p>
-                <p className="font-semibold">2h 45min</p>
-              </div>
+              {/* Feed Type Distribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Feeding Distribution</CardTitle>
+                  <CardDescription>Breakdown of feeding methods</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {feedTypeData.length > 0 ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={feedTypeData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                            label={({ name, percentage }) => `${name} ${percentage}%`}
+                          >
+                            {feedTypeData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="grid grid-cols-3 gap-2 mt-4">
+                        {feedTypeData.map((item) => (
+                          <div key={item.name} className="text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-3 h-3 rounded" style={{ backgroundColor: item.color }}></div>
+                              <span className="text-sm">{item.name}</span>
+                            </div>
+                            <p className="text-lg font-semibold mt-1">{item.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-muted-foreground">
+                      <p>No feeding data available</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Feed Type Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Feeding Distribution</CardTitle>
-            <CardDescription>Breakdown of feeding methods this week</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={feedTypeData}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}%`}
-                >
-                  {feedTypeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex justify-center gap-4 mt-4">
-              {feedTypeData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm">{item.name}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Growth Tracking */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Growth Progress</CardTitle>
-            <CardDescription>Weight and height development over time</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={growthData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
-                <YAxis yAxisId="weight" orientation="left" />
-                <YAxis yAxisId="height" orientation="right" />
-                <Line 
-                  yAxisId="weight"
-                  type="monotone" 
-                  dataKey="weight" 
-                  stroke="#8884d8" 
-                  strokeWidth={2}
-                  name="Weight (kg)"
-                />
-                <Line 
-                  yAxisId="height"
-                  type="monotone" 
-                  dataKey="height" 
-                  stroke="#82ca9d" 
-                  strokeWidth={2}
-                  name="Height (cm)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Weight Gain</p>
-                <p className="font-semibold text-green-600">+1.1kg (34%)</p>
-                <Progress value={75} className="mt-1" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Height Growth</p>
-                <p className="font-semibold text-blue-600">+5cm (10%)</p>
-                <Progress value={60} className="mt-1" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Correlation Analysis - Full Width */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Feed vs. Diaper Correlation</CardTitle>
-          <CardDescription>Relationship between daily feeds and diaper changes</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <ScatterChart data={correlationData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="feeds" name="Feeds" />
-              <YAxis dataKey="nappies" name="Nappies" />
-              <Scatter fill="#8884d8" />
-            </ScatterChart>
-          </ResponsiveContainer>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm">
-              <strong>Insight:</strong> Strong positive correlation (r=0.89) between feeds and diaper changes. 
-              Expect about 0.8 diapers per feed on average.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Smart Insights */}
-      <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-green-600" />
-            AI-Powered Insights
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Pattern</Badge>
-              <p className="text-sm">Your baby tends to sleep longer after cluster feeding sessions in the evening.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Prediction</Badge>
-              <p className="text-sm">Based on growth rate, expect next weight milestone (5kg) in approximately 10 days.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Tip</Badge>
-              <p className="text-sm">Optimal feeding window appears to be every 2.5-3 hours during daytime for best sleep patterns.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            {/* Growth Chart */}
+            {growthData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Growth Trend</CardTitle>
+                  <CardDescription>Weight and height measurements over time</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart data={growthData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis yAxisId="left" />
+                      <YAxis yAxisId="right" orientation="right" />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="weight"
+                        stroke="#8884d8"
+                        strokeWidth={3}
+                        name="Weight (kg)"
+                        dot={{ fill: '#8884d8', strokeWidth: 2, r: 6 }}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="height"
+                        stroke="#82ca9d"
+                        strokeWidth={3}
+                        name="Height (cm)"
+                        dot={{ fill: '#82ca9d', strokeWidth: 2, r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="flex items-center justify-center gap-6 mt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#8884d8]"></div>
+                      <span className="text-sm">Weight (kg)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#82ca9d]"></div>
+                      <span className="text-sm">Height (cm)</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
+        {/* Placeholder tabs for specialized analytics */}
         <TabsContent value="sleep" className="mt-6">
-          <SleepAnalytics />
+          <Card>
+            <CardHeader>
+              <CardTitle>Sleep Analytics</CardTitle>
+              <CardDescription>Detailed sleep pattern analysis</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="py-12 text-center text-muted-foreground">
+                <Moon className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Detailed sleep analytics coming soon</p>
+                <p className="text-sm mt-2">{sleeps.length} sleep sessions recorded</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="feeds" className="mt-6">
-          <FeedAnalytics />
+          <Card>
+            <CardHeader>
+              <CardTitle>Feeding Analytics</CardTitle>
+              <CardDescription>Detailed feeding pattern analysis</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="py-12 text-center text-muted-foreground">
+                <Baby className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Detailed feeding analytics coming soon</p>
+                <p className="text-sm mt-2">{feedings.length} feeding sessions recorded</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="nappies" className="mt-6">
-          <NappyAnalytics />
+          <Card>
+            <CardHeader>
+              <CardTitle>Diaper Analytics</CardTitle>
+              <CardDescription>Detailed diaper change analysis</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="py-12 text-center text-muted-foreground">
+                <Droplets className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Detailed diaper analytics coming soon</p>
+                <p className="text-sm mt-2">{diapers.length} diaper changes recorded</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="growth" className="mt-6">
-          <GrowthAnalytics />
+          <Card>
+            <CardHeader>
+              <CardTitle>Growth Analytics</CardTitle>
+              <CardDescription>Detailed growth tracking and percentiles</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="py-12 text-center text-muted-foreground">
+                <Scale className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Detailed growth analytics coming soon</p>
+                <p className="text-sm mt-2">{growth.length} measurements recorded</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
