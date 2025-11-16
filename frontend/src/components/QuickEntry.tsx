@@ -7,53 +7,172 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
-import { Baby, Droplets, Moon, Scale, Zap } from "lucide-react";
+import { Baby, Droplets, Moon, Scale, Zap, Loader2 } from "lucide-react";
+import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
+import type { FeedingType, BreastSide, SleepLocation, UrineVolume, StoolConsistency, StoolColor, DiaperType } from "../types/api";
 
 interface QuickEntryProps {
-  onAddActivity: (activity: any) => void;
+  babyId: string;
+  onActivityAdded: () => void;
 }
 
-export function QuickEntry({ onAddActivity }: QuickEntryProps) {
+export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
   const [activeEntry, setActiveEntry] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (type: string) => {
-    const activity = {
-      type,
-      time: new Date().toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      }),
-      details: getDetailsString(type, formData),
-      ...formData
-    };
-    
-    onAddActivity(activity);
-    setFormData({});
-    setActiveEntry(null);
-    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
+  const handleSubmitFeed = async () => {
+    try {
+      setLoading(true);
+
+      const feedingType: FeedingType = formData.feedType === 'pump' ? 'breast' : formData.feedType;
+
+      const payload: any = {
+        baby_id: babyId,
+        feeding_type: feedingType,
+        start_time: new Date().toISOString(),
+        notes: formData.notes,
+      };
+
+      if (formData.feedType === 'breast') {
+        payload.breast_started = formData.side?.toLowerCase() as BreastSide;
+        if (formData.side === 'Left' || formData.side === 'left') {
+          payload.left_breast_duration = parseInt(formData.duration) || 0;
+        } else {
+          payload.right_breast_duration = parseInt(formData.duration) || 0;
+        }
+      } else if (formData.feedType === 'bottle') {
+        payload.volume_offered_ml = parseInt(formData.amount) || 0;
+        payload.volume_consumed_ml = parseInt(formData.amount) || 0;
+      }
+
+      await feedingApi.create(payload);
+      toast.success('Feeding logged successfully!');
+      setFormData({});
+      setActiveEntry(null);
+      onActivityAdded();
+    } catch (error) {
+      console.error('Failed to log feeding:', error);
+      toast.error('Failed to log feeding. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getDetailsString = (type: string, data: any) => {
+  const handleSubmitNappy = async () => {
+    try {
+      setLoading(true);
+
+      let hasUrine = false;
+      let hasStool = false;
+      let urineVolume: UrineVolume = 'none';
+      let stoolConsistency: StoolConsistency | undefined;
+
+      if (formData.nappyType === 'Wet diaper') {
+        hasUrine = true;
+        urineVolume = 'moderate';
+      } else if (formData.nappyType === 'Poopy diaper') {
+        hasStool = true;
+        stoolConsistency = 'soft';
+      } else if (formData.nappyType === 'Both') {
+        hasUrine = true;
+        hasStool = true;
+        urineVolume = 'moderate';
+        stoolConsistency = 'soft';
+      }
+
+      await diaperApi.create({
+        baby_id: babyId,
+        timestamp: new Date().toISOString(),
+        has_urine: hasUrine,
+        urine_volume: urineVolume,
+        has_stool: hasStool,
+        stool_consistency: stoolConsistency,
+        diaper_type: 'disposable',
+        notes: formData.notes,
+      });
+
+      toast.success('Diaper change logged successfully!');
+      setFormData({});
+      setActiveEntry(null);
+      onActivityAdded();
+    } catch (error) {
+      console.error('Failed to log diaper change:', error);
+      toast.error('Failed to log diaper change. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitSleep = async () => {
+    try {
+      setLoading(true);
+
+      const payload: any = {
+        baby_id: babyId,
+        sleep_start: new Date().toISOString(),
+        sleep_type: 'nap',
+        location: (formData.location || 'crib') as SleepLocation,
+        sleep_quality: 'good',
+        notes: formData.notes,
+      };
+
+      if (formData.sleepType === 'end' && formData.duration) {
+        // Calculate sleep_end based on duration
+        const sleepEnd = new Date();
+        sleepEnd.setMinutes(sleepEnd.getMinutes() - parseInt(formData.duration));
+        payload.sleep_start = sleepEnd.toISOString();
+        payload.sleep_end = new Date().toISOString();
+      }
+
+      await sleepApi.create(payload);
+      toast.success('Sleep logged successfully!');
+      setFormData({});
+      setActiveEntry(null);
+      onActivityAdded();
+    } catch (error) {
+      console.error('Failed to log sleep:', error);
+      toast.error('Failed to log sleep. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitGrowth = async () => {
+    try {
+      setLoading(true);
+
+      await growthApi.create({
+        baby_id: babyId,
+        measurement_date: new Date().toISOString().split('T')[0],
+        weight_kg: formData.weight ? parseFloat(formData.weight) : undefined,
+        length_cm: formData.height ? parseFloat(formData.height) : undefined,
+        measurement_context: 'home',
+        notes: formData.notes,
+      });
+
+      toast.success('Growth measurement logged successfully!');
+      setFormData({});
+      setActiveEntry(null);
+      onActivityAdded();
+    } catch (error) {
+      console.error('Failed to log growth:', error);
+      toast.error('Failed to log growth. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = (type: string) => {
     switch (type) {
       case 'feed':
-        if (data.feedType === 'breast') {
-          return `${data.side} breast, ${data.duration || 'Unknown'} min`;
-        } else if (data.feedType === 'bottle') {
-          return `Bottle, ${data.amount || 'Unknown'}ml`;
-        } else if (data.feedType === 'pump') {
-          return `Pumped ${data.duration || 'Unknown'} min, ${data.amount || 'Unknown'}ml`;
-        }
-        return 'Feed';
+        return handleSubmitFeed();
       case 'nappy':
-        return data.nappyType || 'Diaper change';
+        return handleSubmitNappy();
       case 'sleep':
-        return data.sleepType === 'start' ? 'Sleep started' : `Slept for ${data.duration || 'Unknown'} min`;
+        return handleSubmitSleep();
       case 'growth':
-        return `Weight: ${data.weight || 'Unknown'}kg, Height: ${data.height || 'Unknown'}cm`;
-      default:
-        return '';
+        return handleSubmitGrowth();
     }
   };
 
@@ -68,7 +187,6 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
           <SelectContent>
             <SelectItem value="breast">Breastfeed</SelectItem>
             <SelectItem value="bottle">Bottle</SelectItem>
-            <SelectItem value="pump">Pump</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -78,18 +196,18 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
           <div>
             <Label>Which Side?</Label>
             <div className="flex gap-2 mt-2">
-              <Button 
+              <Button
                 type="button"
-                variant={formData.side === 'Left' ? 'default' : 'outline'}
-                onClick={() => setFormData({...formData, side: 'Left'})}
+                variant={formData.side === 'left' ? 'default' : 'outline'}
+                onClick={() => setFormData({...formData, side: 'left'})}
                 className="flex-1"
               >
                 Left
               </Button>
-              <Button 
+              <Button
                 type="button"
-                variant={formData.side === 'Right' ? 'default' : 'outline'}
-                onClick={() => setFormData({...formData, side: 'Right'})}
+                variant={formData.side === 'right' ? 'default' : 'outline'}
+                onClick={() => setFormData({...formData, side: 'right'})}
                 className="flex-1"
               >
                 Right
@@ -122,36 +240,21 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
         </div>
       )}
 
-      {formData.feedType === 'pump' && (
-        <>
-          <div>
-            <Label htmlFor="duration">Duration (minutes)</Label>
-            <Input
-              id="duration"
-              type="number"
-              placeholder="20"
-              value={formData.duration || ''}
-              onChange={(e) => setFormData({...formData, duration: e.target.value})}
-            />
-          </div>
-          <div>
-            <Label htmlFor="amount">Amount Pumped (ml)</Label>
-            <Input
-              id="amount"
-              type="number"
-              placeholder="150"
-              value={formData.amount || ''}
-              onChange={(e) => setFormData({...formData, amount: e.target.value})}
-            />
-          </div>
-        </>
-      )}
+      <div>
+        <Label htmlFor="notes">Notes (optional)</Label>
+        <Textarea
+          id="notes"
+          placeholder="Any additional notes..."
+          value={formData.notes || ''}
+          onChange={(e) => setFormData({...formData, notes: e.target.value})}
+        />
+      </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('feed')} className="flex-1">
-          Log Feed
+        <Button onClick={() => handleSubmit('feed')} className="flex-1" disabled={loading}>
+          {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging...</> : 'Log Feed'}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={loading}>
           Cancel
         </Button>
       </div>
@@ -163,28 +266,28 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       <div>
         <Label>Nappy Type</Label>
         <div className="grid grid-cols-2 gap-2 mt-2">
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Wet diaper' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Wet diaper'})}
           >
             💧 Wet
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Poopy diaper' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Poopy diaper'})}
           >
             💩 Poopy
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Both' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Both'})}
           >
             🌊 Both
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Clean' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Clean'})}
@@ -205,10 +308,10 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('nappy')} className="flex-1">
-          Log Nappy
+        <Button onClick={() => handleSubmit('nappy')} className="flex-1" disabled={loading}>
+          {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging...</> : 'Log Nappy'}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={loading}>
           Cancel
         </Button>
       </div>
@@ -220,7 +323,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       <div>
         <Label>Sleep Action</Label>
         <div className="flex gap-2 mt-2">
-          <Button 
+          <Button
             type="button"
             variant={formData.sleepType === 'start' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, sleepType: 'start'})}
@@ -228,7 +331,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
           >
             😴 Sleep Started
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.sleepType === 'end' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, sleepType: 'end'})}
@@ -261,18 +364,28 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
           <SelectContent>
             <SelectItem value="crib">Crib</SelectItem>
             <SelectItem value="bassinet">Bassinet</SelectItem>
-            <SelectItem value="bed">Parent's bed</SelectItem>
+            <SelectItem value="parent_bed">Parent's bed</SelectItem>
             <SelectItem value="stroller">Stroller</SelectItem>
-            <SelectItem value="car">Car seat</SelectItem>
+            <SelectItem value="car_seat">Car seat</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
+      <div>
+        <Label htmlFor="notes">Notes (optional)</Label>
+        <Textarea
+          id="notes"
+          placeholder="Any additional notes..."
+          value={formData.notes || ''}
+          onChange={(e) => setFormData({...formData, notes: e.target.value})}
+        />
+      </div>
+
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('sleep')} className="flex-1">
-          Log Sleep
+        <Button onClick={() => handleSubmit('sleep')} className="flex-1" disabled={loading}>
+          {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging...</> : 'Log Sleep'}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={loading}>
           Cancel
         </Button>
       </div>
@@ -315,10 +428,10 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('growth')} className="flex-1">
-          Log Growth
+        <Button onClick={() => handleSubmit('growth')} className="flex-1" disabled={loading}>
+          {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging...</> : 'Log Growth'}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={loading}>
           Cancel
         </Button>
       </div>
@@ -360,7 +473,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('feed')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -368,7 +481,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
                 <Baby className="w-8 h-8 lg:w-10 lg:h-10" />
                 Feed
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('nappy')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -376,7 +489,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
                 <Droplets className="w-8 h-8 lg:w-10 lg:h-10" />
                 Nappy
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('sleep')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -384,7 +497,7 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
                 <Moon className="w-8 h-8 lg:w-10 lg:h-10" />
                 Sleep
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('growth')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
