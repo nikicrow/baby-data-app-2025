@@ -1,88 +1,18 @@
 // TypeScript types matching backend API schemas
 
-// Enums
-export enum FeedingType {
-  BREAST = 'breast',
-  BOTTLE = 'bottle',
-  SOLID = 'solid',
-}
-
-export enum BreastSide {
-  LEFT = 'left',
-  RIGHT = 'right',
-}
-
-export enum Appetite {
-  POOR = 'poor',
-  FAIR = 'fair',
-  GOOD = 'good',
-  EXCELLENT = 'excellent',
-}
-
-export enum SleepType {
-  NAP = 'nap',
-  NIGHTTIME = 'nighttime',
-}
-
-export enum SleepLocation {
-  CRIB = 'crib',
-  BASSINET = 'bassinet',
-  PARENT_BED = 'parent_bed',
-  STROLLER = 'stroller',
-  CAR_SEAT = 'car_seat',
-  OTHER = 'other',
-}
-
-export enum SleepQuality {
-  RESTLESS = 'restless',
-  FAIR = 'fair',
-  GOOD = 'good',
-  DEEP = 'deep',
-}
-
-export enum WakeReason {
-  NATURAL = 'natural',
-  CRYING = 'crying',
-  FEEDING = 'feeding',
-  DIAPER = 'diaper',
-  NOISE = 'noise',
-  OTHER = 'other',
-}
-
-export enum UrineVolume {
-  NONE = 'none',
-  LIGHT = 'light',
-  MODERATE = 'moderate',
-  HEAVY = 'heavy',
-}
-
-export enum StoolConsistency {
-  LIQUID = 'liquid',
-  SOFT = 'soft',
-  FORMED = 'formed',
-  HARD = 'hard',
-}
-
-export enum StoolColor {
-  YELLOW = 'yellow',
-  BROWN = 'brown',
-  GREEN = 'green',
-  RED = 'red',
-  BLACK = 'black',
-  OTHER = 'other',
-}
-
-export enum DiaperType {
-  DISPOSABLE = 'disposable',
-  CLOTH = 'cloth',
-  TRAINING = 'training',
-}
-
-export enum MeasurementContext {
-  HOME = 'home',
-  DOCTOR_VISIT = 'doctor_visit',
-  HOSPITAL = 'hospital',
-}
+// Union string types (instead of enums for cleaner, lighter code)
+export type FeedingType = 'breast' | 'bottle' | 'solid';
+export type BreastSide = 'left' | 'right';
+export type Appetite = 'poor' | 'fair' | 'good' | 'excellent';
+export type SleepType = 'nap' | 'nighttime';
+export type SleepLocation = 'crib' | 'bassinet' | 'parent_bed' | 'stroller' | 'car_seat' | 'other';
+export type SleepQuality = 'restless' | 'fair' | 'good' | 'deep';
+export type WakeReason = 'natural' | 'crying' | 'feeding' | 'diaper' | 'noise' | 'other';
+export type UrineVolume = 'none' | 'light' | 'moderate' | 'heavy';
+export type StoolConsistency = 'liquid' | 'soft' | 'formed' | 'hard';
+export type StoolColor = 'yellow' | 'brown' | 'green' | 'red' | 'black' | 'other';
+export type DiaperType = 'disposable' | 'cloth' | 'training';
+export type MeasurementContext = 'home' | 'doctor_visit' | 'hospital';
 
 // Baby Profile Types
 export interface BabyProfile {
