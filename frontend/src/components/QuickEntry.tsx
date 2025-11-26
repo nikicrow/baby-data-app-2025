@@ -7,55 +7,144 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
-import { Baby, Droplets, Moon, Scale, Zap } from "lucide-react";
+import { Baby, Droplets, Moon, Scale, Zap, Loader2 } from "lucide-react";
+import { feedingApi, diaperApi, sleepApi, growthApi } from "../services/api";
+import type {
+  FeedingSessionCreate,
+  DiaperEventCreate,
+  SleepSessionCreate,
+  GrowthMeasurementCreate
+} from "../types/api";
 
 interface QuickEntryProps {
-  onAddActivity: (activity: any) => void;
+  babyId: string;
+  onActivityAdded: () => void;
 }
 
-export function QuickEntry({ onAddActivity }: QuickEntryProps) {
+export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
   const [activeEntry, setActiveEntry] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (type: string) => {
-    const activity = {
-      type,
-      time: new Date().toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      }),
-      details: getDetailsString(type, formData),
-      ...formData
-    };
-    
-    onAddActivity(activity);
-    setFormData({});
-    setActiveEntry(null);
-    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
-  };
+  const handleSubmit = async (type: string) => {
+    setIsSubmitting(true);
+    try {
+      switch (type) {
+        case 'feed':
+          await handleFeedingSubmit();
+          break;
+        case 'nappy':
+          await handleDiaperSubmit();
+          break;
+        case 'sleep':
+          await handleSleepSubmit();
+          break;
+        case 'growth':
+          await handleGrowthSubmit();
+          break;
+      }
 
-  const getDetailsString = (type: string, data: any) => {
-    switch (type) {
-      case 'feed':
-        if (data.feedType === 'breast') {
-          return `${data.side} breast, ${data.duration || 'Unknown'} min`;
-        } else if (data.feedType === 'bottle') {
-          return `Bottle, ${data.amount || 'Unknown'}ml`;
-        } else if (data.feedType === 'pump') {
-          return `Pumped ${data.duration || 'Unknown'} min, ${data.amount || 'Unknown'}ml`;
-        }
-        return 'Feed';
-      case 'nappy':
-        return data.nappyType || 'Diaper change';
-      case 'sleep':
-        return data.sleepType === 'start' ? 'Sleep started' : `Slept for ${data.duration || 'Unknown'} min`;
-      case 'growth':
-        return `Weight: ${data.weight || 'Unknown'}kg, Height: ${data.height || 'Unknown'}cm`;
-      default:
-        return '';
+      setFormData({});
+      setActiveEntry(null);
+      onActivityAdded();
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
+    } catch (error: any) {
+      console.error(`Failed to log ${type}:`, error);
+      toast.error(`Failed to log ${type}. ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  const handleFeedingSubmit = async () => {
+    const feedingData: FeedingSessionCreate = {
+      baby_id: babyId,
+      feeding_type: formData.feedType === 'pump' ? 'bottle' : formData.feedType, // Map 'pump' to 'bottle' for now
+      start_time: new Date().toISOString(),
+    };
+
+    // Add breast-specific fields
+    if (formData.feedType === 'breast' && formData.side) {
+      feedingData.breast_started = formData.side.toLowerCase() as 'left' | 'right';
+      const duration = parseInt(formData.duration) || 0;
+      if (formData.side === 'Left') {
+        feedingData.left_breast_duration = duration;
+      } else if (formData.side === 'Right') {
+        feedingData.right_breast_duration = duration;
+      }
+    }
+
+    // Add bottle-specific fields
+    if (formData.feedType === 'bottle' || formData.feedType === 'pump') {
+      const amount = parseInt(formData.amount) || 0;
+      feedingData.volume_consumed_ml = amount;
+      feedingData.volume_offered_ml = amount;
+    }
+
+    await feedingApi.create(feedingData);
+  };
+
+  const handleDiaperSubmit = async () => {
+    const nappyType = formData.nappyType || 'Clean';
+    const diaperData: DiaperEventCreate = {
+      baby_id: babyId,
+      timestamp: new Date().toISOString(),
+      has_urine: nappyType === 'Wet diaper' || nappyType === 'Both',
+      has_stool: nappyType === 'Poopy diaper' || nappyType === 'Both',
+      urine_volume: nappyType === 'Wet diaper' || nappyType === 'Both' ? 'moderate' : 'none',
+      diaper_type: 'disposable',
+      notes: formData.notes,
+    };
+
+    if (diaperData.has_stool) {
+      diaperData.stool_consistency = 'soft';
+      diaperData.stool_color = 'yellow';
+    }
+
+    await diaperApi.create(diaperData);
+  };
+
+  const handleSleepSubmit = async () => {
+    const sleepData: SleepSessionCreate = {
+      baby_id: babyId,
+      sleep_type: 'nap', // Default to nap for now
+      location: formData.location || 'crib',
+      sleep_quality: 'good',
+    };
+
+    if (formData.sleepType === 'start') {
+      sleepData.sleep_start = new Date().toISOString();
+    } else if (formData.sleepType === 'end') {
+      // Calculate start time based on duration
+      const duration = parseInt(formData.duration) || 0;
+      const endTime = new Date();
+      const startTime = new Date(endTime.getTime() - duration * 60 * 1000);
+      sleepData.sleep_start = startTime.toISOString();
+      sleepData.sleep_end = endTime.toISOString();
+    }
+
+    await sleepApi.create(sleepData);
+  };
+
+  const handleGrowthSubmit = async () => {
+    const growthData: GrowthMeasurementCreate = {
+      baby_id: babyId,
+      measurement_date: new Date().toISOString(),
+      measurement_context: 'home',
+      notes: formData.notes,
+    };
+
+    if (formData.weight) {
+      growthData.weight_kg = parseFloat(formData.weight);
+    }
+
+    if (formData.height) {
+      growthData.length_cm = parseFloat(formData.height);
+    }
+
+    await growthApi.create(growthData);
+  };
+
 
   const renderFeedingForm = () => (
     <div className="space-y-4">
@@ -148,10 +237,17 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       )}
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('feed')} className="flex-1">
-          Log Feed
+        <Button onClick={() => handleSubmit('feed')} className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Logging...
+            </>
+          ) : (
+            'Log Feed'
+          )}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={isSubmitting}>
           Cancel
         </Button>
       </div>
@@ -205,10 +301,17 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('nappy')} className="flex-1">
-          Log Nappy
+        <Button onClick={() => handleSubmit('nappy')} className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Logging...
+            </>
+          ) : (
+            'Log Nappy'
+          )}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={isSubmitting}>
           Cancel
         </Button>
       </div>
@@ -269,10 +372,17 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('sleep')} className="flex-1">
-          Log Sleep
+        <Button onClick={() => handleSubmit('sleep')} className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Logging...
+            </>
+          ) : (
+            'Log Sleep'
+          )}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={isSubmitting}>
           Cancel
         </Button>
       </div>
@@ -315,10 +425,17 @@ export function QuickEntry({ onAddActivity }: QuickEntryProps) {
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('growth')} className="flex-1">
-          Log Growth
+        <Button onClick={() => handleSubmit('growth')} className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Logging...
+            </>
+          ) : (
+            'Log Growth'
+          )}
         </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1">
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={isSubmitting}>
           Cancel
         </Button>
       </div>
