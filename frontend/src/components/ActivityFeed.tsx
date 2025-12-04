@@ -1,15 +1,157 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import { Baby, Droplets, Moon, Scale, Clock, Edit, Trash2, TrendingUp } from "lucide-react";
-import { format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
+import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
 
 interface ActivityFeedProps {
-  activities: any[];
+  babyId: string;
+  refreshTrigger: number;
 }
 
-export function ActivityFeed({ activities }: ActivityFeedProps) {
+interface Activity {
+  id: string;
+  type: 'feed' | 'nappy' | 'sleep' | 'growth';
+  timestamp: Date;
+  time: string;
+  details: string;
+  notes?: string;
+}
+
+export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [latestWeight, setLatestWeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchActivities();
+  }, [babyId, refreshTrigger]);
+
+  const fetchActivities = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch all activity types in parallel
+      const [feedings, sleeps, diapers, growths] = await Promise.all([
+        feedingApi.getAll({ baby_id: babyId }),
+        sleepApi.getAll({ baby_id: babyId }),
+        diaperApi.getAll({ baby_id: babyId }),
+        growthApi.getAll({ baby_id: babyId }),
+      ]);
+
+      // Transform and combine all activities
+      const allActivities: Activity[] = [
+        ...feedings.map(f => transformFeeding(f)),
+        ...sleeps.map(s => transformSleep(s)),
+        ...diapers.map(d => transformDiaper(d)),
+        ...growths.map(g => transformGrowth(g)),
+      ];
+
+      // Sort by timestamp descending
+      allActivities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+      setActivities(allActivities);
+
+      // Set latest weight
+      if (growths.length > 0) {
+        const sortedGrowths = [...growths].sort((a, b) =>
+          new Date(b.measurement_date).getTime() - new Date(a.measurement_date).getTime()
+        );
+        setLatestWeight(sortedGrowths[0].weight_kg || null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch activities:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const transformFeeding = (feeding: FeedingSession): Activity => {
+    const timestamp = parseISO(feeding.start_time);
+    let details = '';
+
+    if (feeding.feeding_type === 'breast') {
+      const leftDur = feeding.left_breast_duration || 0;
+      const rightDur = feeding.right_breast_duration || 0;
+      details = `Breast feeding - Left: ${leftDur}min, Right: ${rightDur}min`;
+    } else if (feeding.feeding_type === 'bottle') {
+      details = `Bottle - ${feeding.volume_consumed_ml || 0}ml`;
+    } else if (feeding.feeding_type === 'solid') {
+      details = `Solid food - ${feeding.food_items?.join(', ') || 'Unknown'}`;
+    }
+
+    return {
+      id: feeding.id,
+      type: 'feed',
+      timestamp,
+      time: format(timestamp, 'h:mm a'),
+      details,
+      notes: feeding.notes,
+    };
+  };
+
+  const transformSleep = (sleep: SleepSession): Activity => {
+    const timestamp = parseISO(sleep.sleep_start);
+    const duration = sleep.duration_minutes || 0;
+    const hours = Math.floor(duration / 60);
+    const mins = duration % 60;
+
+    return {
+      id: sleep.id,
+      type: 'sleep',
+      timestamp,
+      time: format(timestamp, 'h:mm a'),
+      details: `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`,
+      notes: sleep.notes,
+    };
+  };
+
+  const transformDiaper = (diaper: DiaperEvent): Activity => {
+    const timestamp = parseISO(diaper.timestamp);
+    const types = [];
+    if (diaper.has_urine) types.push('wet');
+    if (diaper.has_stool) types.push('dirty');
+
+    return {
+      id: diaper.id,
+      type: 'nappy',
+      timestamp,
+      time: format(timestamp, 'h:mm a'),
+      details: `Diaper change - ${types.join(' & ') || 'clean'}`,
+      notes: diaper.notes,
+    };
+  };
+
+  const transformGrowth = (growth: GrowthMeasurement): Activity => {
+    const timestamp = parseISO(growth.measurement_date);
+    const details = [];
+    if (growth.weight_kg) details.push(`${growth.weight_kg}kg`);
+    if (growth.length_cm) details.push(`${growth.length_cm}cm`);
+
+    return {
+      id: growth.id,
+      type: 'growth',
+      timestamp,
+      time: format(timestamp, 'h:mm a'),
+      details: `Growth measurement - ${details.join(', ')}`,
+      notes: growth.notes,
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Clock className="w-8 h-8 animate-spin mx-auto mb-2" />
+          <p className="text-muted-foreground">Loading activities...</p>
+        </div>
+      </div>
+    );
+  }
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'feed':
@@ -100,21 +242,36 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
               <div className="flex items-center justify-center mb-2">
                 <Scale className="w-5 h-5 text-green-600" />
               </div>
-              <p className="text-2xl font-bold text-green-600">4.2kg</p>
+              <p className="text-2xl font-bold text-green-600">
+                {latestWeight ? `${latestWeight}kg` : '-'}
+              </p>
               <p className="text-sm text-muted-foreground">Last Weight</p>
             </div>
             <div className="text-center lg:block hidden">
               <div className="flex items-center justify-center mb-2">
                 <Clock className="w-5 h-5 text-purple-600" />
               </div>
-              <p className="text-2xl font-bold text-purple-600">2h 15m</p>
+              <p className="text-2xl font-bold text-purple-600">-</p>
               <p className="text-sm text-muted-foreground">Avg Wake Window</p>
             </div>
             <div className="text-center lg:block hidden">
               <div className="flex items-center justify-center mb-2">
                 <TrendingUp className="w-5 h-5 text-green-600" />
               </div>
-              <p className="text-2xl font-bold text-green-600">8h 30m</p>
+              <p className="text-2xl font-bold text-green-600">
+                {(() => {
+                  const sleepToday = todayStats.filter(a => a.type === 'sleep');
+                  if (sleepToday.length === 0) return '-';
+                  const longestSleep = Math.max(...sleepToday.map(s => {
+                    const match = s.details.match(/(\d+)h (\d+)m/);
+                    if (!match) return 0;
+                    return parseInt(match[1]) * 60 + parseInt(match[2]);
+                  }));
+                  const hours = Math.floor(longestSleep / 60);
+                  const mins = longestSleep % 60;
+                  return `${hours}h ${mins}m`;
+                })()}
+              </p>
               <p className="text-sm text-muted-foreground">Longest Sleep</p>
             </div>
           </div>
@@ -199,38 +356,35 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
           <Card>
             <CardHeader>
               <CardTitle>Weekly Overview</CardTitle>
-              <CardDescription>Activity trends over the past week</CardDescription>
+              <CardDescription>Activity trends from your data</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <h5 className="font-medium">Most Active Day</h5>
-                  <p className="text-sm text-muted-foreground">Tuesday (24 activities)</p>
+                  <h5 className="font-medium">Total Activities</h5>
+                  <p className="text-sm text-muted-foreground">{activities.length} recorded</p>
                   <div className="flex items-center gap-2">
                     <div className="w-full bg-secondary rounded-full h-2">
-                      <div className="bg-primary h-2 rounded-full" style={{ width: '85%' }}></div>
+                      <div className="bg-primary h-2 rounded-full" style={{ width: '100%' }}></div>
                     </div>
-                    <span className="text-xs">85%</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <h5 className="font-medium">Average Daily Feeds</h5>
-                  <p className="text-sm text-muted-foreground">8.2 feeds per day</p>
+                  <h5 className="font-medium">Today's Feeds</h5>
+                  <p className="text-sm text-muted-foreground">{feedCount} feeds logged</p>
                   <div className="flex items-center gap-2">
                     <div className="w-full bg-secondary rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: '75%' }}></div>
+                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min(feedCount * 10, 100)}%` }}></div>
                     </div>
-                    <span className="text-xs">↑12%</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <h5 className="font-medium">Sleep Quality</h5>
-                  <p className="text-sm text-muted-foreground">Good consistency</p>
+                  <h5 className="font-medium">Today's Nappies</h5>
+                  <p className="text-sm text-muted-foreground">{nappyCount} changes</p>
                   <div className="flex items-center gap-2">
                     <div className="w-full bg-secondary rounded-full h-2">
-                      <div className="bg-green-600 h-2 rounded-full" style={{ width: '90%' }}></div>
+                      <div className="bg-orange-600 h-2 rounded-full" style={{ width: `${Math.min(nappyCount * 10, 100)}%` }}></div>
                     </div>
-                    <span className="text-xs">90%</span>
                   </div>
                 </div>
               </div>
@@ -245,19 +399,19 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total Activities</span>
-                  <span className="font-semibold">147</span>
+                  <span className="font-semibold">{activities.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">This Week</span>
-                  <span className="font-semibold">23</span>
+                  <span className="text-sm text-muted-foreground">Today</span>
+                  <span className="font-semibold">{todayStats.length}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Average per Day</span>
-                  <span className="font-semibold">3.3</span>
+                  <span className="text-sm text-muted-foreground">Feeds Today</span>
+                  <span className="font-semibold">{feedCount}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Streak</span>
-                  <span className="font-semibold text-green-600">12 days</span>
+                  <span className="text-sm text-muted-foreground">Sleep Events</span>
+                  <span className="font-semibold text-purple-600">{sleepActivities.length}</span>
                 </div>
               </div>
             </CardContent>

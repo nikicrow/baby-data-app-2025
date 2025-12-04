@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -23,56 +23,104 @@ import { SleepAnalytics } from "./analytics/SleepAnalytics";
 import { FeedAnalytics } from "./analytics/FeedAnalytics";
 import { NappyAnalytics } from "./analytics/NappyAnalytics";
 import { GrowthAnalytics } from "./analytics/GrowthAnalytics";
+import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
+import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
+import { isToday, parseISO, startOfDay, format, subDays } from "date-fns";
 
 interface InsightsDashboardProps {
-  activities: any[];
+  babyId: string;
+  refreshTrigger: number;
 }
 
-export function InsightsDashboard({ activities }: InsightsDashboardProps) {
+export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardProps) {
   const [activeAnalyticsTab, setActiveAnalyticsTab] = useState('overview');
-  // Mock data for comprehensive analytics
-  const weeklyFeedData = [
-    { day: 'Mon', feeds: 8, duration: 180 },
-    { day: 'Tue', feeds: 9, duration: 195 },
-    { day: 'Wed', feeds: 7, duration: 165 },
-    { day: 'Thu', feeds: 8, duration: 175 },
-    { day: 'Fri', feeds: 9, duration: 190 },
-    { day: 'Sat', feeds: 8, duration: 170 },
-    { day: 'Sun', feeds: 7, duration: 160 },
-  ];
+  const [loading, setLoading] = useState(true);
 
-  const sleepPatternData = [
-    { time: '6AM', duration: 45 },
-    { time: '9AM', duration: 90 },
-    { time: '1PM', duration: 120 },
-    { time: '4PM', duration: 30 },
-    { time: '7PM', duration: 480 }, // Night sleep
-  ];
+  // Real data from backend
+  const [feedings, setFeedings] = useState<FeedingSession[]>([]);
+  const [sleeps, setSleeps] = useState<SleepSession[]>([]);
+  const [diapers, setDiapers] = useState<DiaperEvent[]>([]);
+  const [growths, setGrowths] = useState<GrowthMeasurement[]>([]);
+
+  useEffect(() => {
+    fetchAllData();
+  }, [babyId, refreshTrigger]);
+
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+      const [feedingsData, sleepsData, diapersData, growthsData] = await Promise.all([
+        feedingApi.getAll({ baby_id: babyId }),
+        sleepApi.getAll({ baby_id: babyId }),
+        diaperApi.getAll({ baby_id: babyId }),
+        growthApi.getAll({ baby_id: babyId }),
+      ]);
+
+      setFeedings(feedingsData);
+      setSleeps(sleepsData);
+      setDiapers(diapersData);
+      setGrowths(growthsData);
+    } catch (error) {
+      console.error('Failed to fetch analytics data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate real analytics from data
+  const todayFeedings = feedings.filter(f => isToday(parseISO(f.start_time)));
+  const todaySleeps = sleeps.filter(s => isToday(parseISO(s.sleep_start)));
+  const todayDiapers = diapers.filter(d => isToday(parseISO(d.timestamp)));
+
+  const totalSleepToday = todaySleeps.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const sleepHoursToday = Math.floor(totalSleepToday / 60);
+  const sleepMinsToday = totalSleepToday % 60;
+
+  // Weekly feed data - last 7 days
+  const weeklyFeedData = Array.from({ length: 7 }, (_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const dayFeedings = feedings.filter(f => {
+      const feedDate = parseISO(f.start_time);
+      return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
+    });
+    return {
+      day: format(date, 'EEE'),
+      feeds: dayFeedings.length,
+      duration: dayFeedings.reduce((sum, f) => sum + (f.duration_minutes || 0), 0),
+    };
+  });
+
+  // Feed type distribution
+  const breastCount = feedings.filter(f => f.feeding_type === 'breast').length;
+  const bottleCount = feedings.filter(f => f.feeding_type === 'bottle').length;
+  const solidCount = feedings.filter(f => f.feeding_type === 'solid').length;
+  const totalFeeds = breastCount + bottleCount + solidCount;
 
   const feedTypeData = [
-    { name: 'Breast', value: 65, color: '#8884d8' },
-    { name: 'Bottle', value: 25, color: '#82ca9d' },
-    { name: 'Pump', value: 10, color: '#ffc658' },
-  ];
+    { name: 'Breast', value: breastCount, color: '#8884d8' },
+    { name: 'Bottle', value: bottleCount, color: '#82ca9d' },
+    { name: 'Solid', value: solidCount, color: '#ffc658' },
+  ].filter(d => d.value > 0);
 
-  const correlationData = [
-    { feeds: 6, nappies: 4 },
-    { feeds: 7, nappies: 5 },
-    { feeds: 8, nappies: 6 },
-    { feeds: 9, nappies: 7 },
-    { feeds: 8, nappies: 6 },
-    { feeds: 7, nappies: 5 },
-    { feeds: 9, nappies: 8 },
-  ];
+  // Growth data
+  const growthData = growths
+    .sort((a, b) => new Date(a.measurement_date).getTime() - new Date(b.measurement_date).getTime())
+    .map(g => ({
+      date: format(parseISO(g.measurement_date), 'MMM d'),
+      weight: g.weight_kg || 0,
+      height: g.length_cm || 0,
+    }));
 
-  const growthData = [
-    { week: 'Week 1', weight: 3.2, height: 48 },
-    { week: 'Week 2', weight: 3.4, height: 49 },
-    { week: 'Week 3', weight: 3.6, height: 50 },
-    { week: 'Week 4', weight: 3.9, height: 51 },
-    { week: 'Week 5', weight: 4.1, height: 52 },
-    { week: 'Week 6', weight: 4.3, height: 53 },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Clock className="w-8 h-8 animate-spin mx-auto mb-2" />
+          <p className="text-muted-foreground">Loading insights...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -110,13 +158,15 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Today's Feeds</p>
-                      <p className="text-2xl font-bold">8</p>
+                      <p className="text-2xl font-bold">{todayFeedings.length}</p>
                     </div>
                     <Baby className="w-8 h-8 text-blue-600" />
                   </div>
                   <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">+12% vs yesterday</span>
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {totalFeeds} total logged
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -126,13 +176,17 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Sleep Today</p>
-                      <p className="text-2xl font-bold">12h</p>
+                      <p className="text-2xl font-bold">
+                        {totalSleepToday > 0 ? `${sleepHoursToday}h ${sleepMinsToday}m` : '0h'}
+                      </p>
                     </div>
                     <Moon className="w-8 h-8 text-purple-600" />
                   </div>
                   <div className="flex items-center gap-1 mt-2">
-                    <TrendingDown className="w-4 h-4 text-red-600" />
-                    <span className="text-sm text-red-600">-30min vs avg</span>
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {todaySleeps.length} sessions
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -142,12 +196,12 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Nappies Today</p>
-                      <p className="text-2xl font-bold">6</p>
+                      <p className="text-2xl font-bold">{todayDiapers.length}</p>
                     </div>
                     <Droplets className="w-8 h-8 text-orange-600" />
                   </div>
                   <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
+                    <Clock className="w-4 h-4 text-muted-foreground" />
                     <span className="text-sm text-green-600">Normal range</span>
                   </div>
                 </CardContent>
@@ -157,14 +211,20 @@ export function InsightsDashboard({ activities }: InsightsDashboardProps) {
                 <CardContent className="p-4 lg:p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Avg Wake Window</p>
-                      <p className="text-2xl font-bold">2h 45m</p>
+                      <p className="text-sm text-muted-foreground">Latest Weight</p>
+                      <p className="text-2xl font-bold">
+                        {growths.length > 0
+                          ? `${growths.sort((a, b) => new Date(b.measurement_date).getTime() - new Date(a.measurement_date).getTime())[0].weight_kg}kg`
+                          : '-'}
+                      </p>
                     </div>
-                    <Clock className="w-8 h-8 text-purple-600" />
+                    <Scale className="w-8 h-8 text-green-600" />
                   </div>
                   <div className="flex items-center gap-1 mt-2">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">Ideal for age</span>
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {growths.length} measurements
+                    </span>
                   </div>
                 </CardContent>
               </Card>
