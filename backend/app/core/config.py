@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     def assemble_db_connection(cls, v: Optional[str], info) -> Any:
         if isinstance(v, str):
             return v
-        # For now, return a simple database URL without building it
-        # This avoids the validation issue and allows the server to start
-        return "postgresql://postgres:password@localhost/baby_data"
+        # Build DATABASE_URL from individual components
+        values = info.data
+        return f"postgresql://{values.get('POSTGRES_USER')}:{values.get('POSTGRES_PASSWORD')}@{values.get('POSTGRES_SERVER')}/{values.get('POSTGRES_DB')}"
 
     # Redis configuration (optional, for caching)
     REDIS_URL: str = "redis://localhost:6379"
