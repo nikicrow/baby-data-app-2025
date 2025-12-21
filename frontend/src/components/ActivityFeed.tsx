@@ -77,7 +77,21 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
     if (feeding.feeding_type === 'breast') {
       const leftDur = feeding.left_breast_duration || 0;
       const rightDur = feeding.right_breast_duration || 0;
-      details = `Breast feeding - Left: ${leftDur}min, Right: ${rightDur}min`;
+
+      // Show both breasts if both were used
+      if (leftDur > 0 && rightDur > 0) {
+        const firstBreast = feeding.breast_started === 'left' ? 'Left' : 'Right';
+        const secondBreast = feeding.breast_started === 'left' ? 'Right' : 'Left';
+        const firstDur = feeding.breast_started === 'left' ? leftDur : rightDur;
+        const secondDur = feeding.breast_started === 'left' ? rightDur : leftDur;
+        details = `Breast - ${firstBreast}: ${firstDur}min, then ${secondBreast}: ${secondDur}min (${leftDur + rightDur}min total)`;
+      } else if (leftDur > 0) {
+        details = `Breast - Left: ${leftDur}min`;
+      } else if (rightDur > 0) {
+        details = `Breast - Right: ${rightDur}min`;
+      } else {
+        details = 'Breast feeding';
+      }
     } else if (feeding.feeding_type === 'bottle') {
       details = `Bottle - ${feeding.volume_consumed_ml || 0}ml`;
     } else if (feeding.feeding_type === 'solid') {
