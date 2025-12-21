@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
-import { Baby, Droplets, Moon, Scale, Zap, Loader2 } from "lucide-react";
+import { Baby, Droplets, Moon, Scale, Zap, Loader2, Clock } from "lucide-react";
 import { feedingApi, diaperApi, sleepApi, growthApi } from "../services/api";
 import type {
   FeedingSessionCreate,
@@ -25,6 +25,30 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
   const [activeEntry, setActiveEntry] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('');
+
+  // Helper function to get timestamp (current or custom)
+  const getTimestamp = (): string => {
+    if (useCustomTime && customDate && customTime) {
+      return new Date(`${customDate}T${customTime}`).toISOString();
+    }
+    return new Date().toISOString();
+  };
+
+  // Helper to initialize custom date/time with current values when toggled
+  const toggleCustomTime = () => {
+    if (!useCustomTime) {
+      // Initialize with current date/time when opening
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const timeStr = now.toTimeString().slice(0, 5); // HH:MM
+      setCustomDate(dateStr);
+      setCustomTime(timeStr);
+    }
+    setUseCustomTime(!useCustomTime);
+  };
 
   const handleSubmit = async (type: string) => {
     setIsSubmitting(true);
@@ -46,6 +70,9 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
 
       setFormData({});
       setActiveEntry(null);
+      setUseCustomTime(false);
+      setCustomDate('');
+      setCustomTime('');
       onActivityAdded();
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
     } catch (error: any) {
@@ -60,7 +87,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
     const feedingData: FeedingSessionCreate = {
       baby_id: babyId,
       feeding_type: formData.feedType === 'pump' ? 'bottle' : formData.feedType, // Map 'pump' to 'bottle' for now
-      start_time: new Date().toISOString(),
+      start_time: getTimestamp(),
     };
 
     // Add breast-specific fields
@@ -100,7 +127,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
     const nappyType = formData.nappyType || 'Clean';
     const diaperData: DiaperEventCreate = {
       baby_id: babyId,
-      timestamp: new Date().toISOString(),
+      timestamp: getTimestamp(),
       has_urine: nappyType === 'Wet diaper' || nappyType === 'Both',
       has_stool: nappyType === 'Poopy diaper' || nappyType === 'Both',
       urine_volume: nappyType === 'Wet diaper' || nappyType === 'Both' ? 'moderate' : 'none',
@@ -125,11 +152,13 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
     };
 
     if (formData.sleepType === 'start') {
-      sleepData.sleep_start = new Date().toISOString();
+      sleepData.sleep_start = getTimestamp();
     } else if (formData.sleepType === 'end') {
       // Calculate start time based on duration
       const duration = parseInt(formData.duration) || 0;
-      const endTime = new Date();
+      const endTime = useCustomTime && customDate && customTime
+        ? new Date(`${customDate}T${customTime}`)
+        : new Date();
       const startTime = new Date(endTime.getTime() - duration * 60 * 1000);
       sleepData.sleep_start = startTime.toISOString();
       sleepData.sleep_end = endTime.toISOString();
@@ -141,7 +170,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
   const handleGrowthSubmit = async () => {
     const growthData: GrowthMeasurementCreate = {
       baby_id: babyId,
-      measurement_date: new Date().toISOString(),
+      measurement_date: getTimestamp(),
       measurement_context: 'home',
       notes: formData.notes,
     };
@@ -157,6 +186,49 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
     await growthApi.create(growthData);
   };
 
+  // Reusable time picker component
+  const renderTimePicker = () => (
+    <div className="border-t pt-4 mt-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={toggleCustomTime}
+        className="w-full text-left justify-start"
+      >
+        <Clock className="w-4 h-4 mr-2" />
+        {useCustomTime ? 'Using custom time ✓' : 'Log for different time?'}
+      </Button>
+
+      {useCustomTime && (
+        <div className="mt-3 space-y-3 bg-gray-50 p-3 rounded-md">
+          <div>
+            <Label htmlFor="customDate" className="text-sm">Date</Label>
+            <Input
+              id="customDate"
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="customTime" className="text-sm">Time</Label>
+            <Input
+              id="customTime"
+              type="time"
+              value={customTime}
+              onChange={(e) => setCustomTime(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Logging for: {customDate} at {customTime}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 
   const renderFeedingForm = () => (
     <div className="space-y-4">
@@ -303,6 +375,8 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
         </>
       )}
 
+      {renderTimePicker()}
+
       <div className="flex gap-2">
         <Button onClick={() => handleSubmit('feed')} className="flex-1" disabled={isSubmitting}>
           {isSubmitting ? (
@@ -366,6 +440,8 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
           onChange={(e) => setFormData({...formData, notes: e.target.value})}
         />
       </div>
+
+      {renderTimePicker()}
 
       <div className="flex gap-2">
         <Button onClick={() => handleSubmit('nappy')} className="flex-1" disabled={isSubmitting}>
@@ -438,6 +514,8 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
         </Select>
       </div>
 
+      {renderTimePicker()}
+
       <div className="flex gap-2">
         <Button onClick={() => handleSubmit('sleep')} className="flex-1" disabled={isSubmitting}>
           {isSubmitting ? (
@@ -490,6 +568,8 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
           onChange={(e) => setFormData({...formData, notes: e.target.value})}
         />
       </div>
+
+      {renderTimePicker()}
 
       <div className="flex gap-2">
         <Button onClick={() => handleSubmit('growth')} className="flex-1" disabled={isSubmitting}>
