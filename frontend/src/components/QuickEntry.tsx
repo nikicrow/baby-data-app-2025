@@ -64,13 +64,25 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
     };
 
     // Add breast-specific fields
-    if (formData.feedType === 'breast' && formData.side) {
-      feedingData.breast_started = formData.side.toLowerCase() as 'left' | 'right';
-      const duration = parseInt(formData.duration) || 0;
-      if (formData.side === 'Left') {
-        feedingData.left_breast_duration = duration;
-      } else if (formData.side === 'Right') {
-        feedingData.right_breast_duration = duration;
+    if (formData.feedType === 'breast' && formData.firstBreast) {
+      feedingData.breast_started = formData.firstBreast.toLowerCase() as 'left' | 'right';
+
+      // Add first breast duration
+      const firstDuration = parseInt(formData.firstBreastDuration) || 0;
+      if (formData.firstBreast === 'left') {
+        feedingData.left_breast_duration = firstDuration;
+      } else {
+        feedingData.right_breast_duration = firstDuration;
+      }
+
+      // Add second breast duration if provided
+      if (formData.addSecondBreast && formData.secondBreastDuration) {
+        const secondDuration = parseInt(formData.secondBreastDuration) || 0;
+        if (formData.firstBreast === 'left') {
+          feedingData.right_breast_duration = secondDuration;
+        } else {
+          feedingData.left_breast_duration = secondDuration;
+        }
       }
     }
 
@@ -165,36 +177,91 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
       {formData.feedType === 'breast' && (
         <>
           <div>
-            <Label>Which Side?</Label>
+            <Label>Which breast first?</Label>
             <div className="flex gap-2 mt-2">
-              <Button 
+              <Button
                 type="button"
-                variant={formData.side === 'Left' ? 'default' : 'outline'}
-                onClick={() => setFormData({...formData, side: 'Left'})}
+                variant={formData.firstBreast === 'left' ? 'default' : 'outline'}
+                onClick={() => setFormData({...formData, firstBreast: 'left'})}
                 className="flex-1"
               >
                 Left
               </Button>
-              <Button 
+              <Button
                 type="button"
-                variant={formData.side === 'Right' ? 'default' : 'outline'}
-                onClick={() => setFormData({...formData, side: 'Right'})}
+                variant={formData.firstBreast === 'right' ? 'default' : 'outline'}
+                onClick={() => setFormData({...formData, firstBreast: 'right'})}
                 className="flex-1"
               >
                 Right
               </Button>
             </div>
           </div>
-          <div>
-            <Label htmlFor="duration">Duration (minutes)</Label>
-            <Input
-              id="duration"
-              type="number"
-              placeholder="15"
-              value={formData.duration || ''}
-              onChange={(e) => setFormData({...formData, duration: e.target.value})}
-            />
-          </div>
+
+          {formData.firstBreast && (
+            <>
+              <div>
+                <Label htmlFor="firstBreastDuration">
+                  {formData.firstBreast === 'left' ? 'Left' : 'Right'} breast duration (minutes)
+                </Label>
+                <Input
+                  id="firstBreastDuration"
+                  type="number"
+                  placeholder="15"
+                  value={formData.firstBreastDuration || ''}
+                  onChange={(e) => setFormData({...formData, firstBreastDuration: e.target.value})}
+                />
+              </div>
+
+              {!formData.addSecondBreast ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setFormData({...formData, addSecondBreast: true})}
+                  className="w-full"
+                >
+                  + Add {formData.firstBreast === 'left' ? 'right' : 'left'} breast
+                </Button>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="secondBreastDuration">
+                      {formData.firstBreast === 'left' ? 'Right' : 'Left'} breast duration (minutes)
+                    </Label>
+                    <Input
+                      id="secondBreastDuration"
+                      type="number"
+                      placeholder="15"
+                      value={formData.secondBreastDuration || ''}
+                      onChange={(e) => setFormData({...formData, secondBreastDuration: e.target.value})}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFormData({...formData, addSecondBreast: false, secondBreastDuration: ''})}
+                    className="w-full text-muted-foreground"
+                  >
+                    Remove second breast
+                  </Button>
+                </>
+              )}
+
+              {formData.firstBreastDuration && formData.addSecondBreast && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm">
+                  <p className="text-blue-900">
+                    <strong>Total feeding time:</strong>{' '}
+                    {(parseInt(formData.firstBreastDuration || '0') + parseInt(formData.secondBreastDuration || '0'))} minutes
+                  </p>
+                  <p className="text-blue-700 text-xs mt-1">
+                    Started {formData.firstBreast} breast for {formData.firstBreastDuration}min,
+                    then {formData.firstBreast === 'left' ? 'right' : 'left'} breast
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
 
