@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     
     # CORS origins for frontend
     BACKEND_CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",  # React dev server
+        "http://localhost:3000",  # React dev server (default)
+        "http://localhost:3001",  # React feature branch server (alternate port)
         "http://localhost:8000",  # FastAPI dev server
         "https://localhost:3000",
     ]

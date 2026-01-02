@@ -16,12 +16,12 @@ import type {
   GrowthMeasurementCreate
 } from "../types/api";
 
-interface QuickEntryProps {
+interface LogActivityProps {
   babyId: string;
   onActivityAdded: () => void;
 }
 
-export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
+export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   const [activeEntry, setActiveEntry] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -400,28 +400,28 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
       <div>
         <Label>Nappy Type</Label>
         <div className="grid grid-cols-2 gap-2 mt-2">
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Wet diaper' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Wet diaper'})}
           >
             💧 Wet
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Poopy diaper' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Poopy diaper'})}
           >
             💩 Poopy
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Both' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Both'})}
           >
             🌊 Both
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.nappyType === 'Clean' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, nappyType: 'Clean'})}
@@ -466,7 +466,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
       <div>
         <Label>Sleep Action</Label>
         <div className="flex gap-2 mt-2">
-          <Button 
+          <Button
             type="button"
             variant={formData.sleepType === 'start' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, sleepType: 'start'})}
@@ -474,7 +474,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
           >
             😴 Sleep Started
           </Button>
-          <Button 
+          <Button
             type="button"
             variant={formData.sleepType === 'end' ? 'default' : 'outline'}
             onClick={() => setFormData({...formData, sleepType: 'end'})}
@@ -624,7 +624,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('feed')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -632,7 +632,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
                 <Baby className="w-8 h-8 lg:w-10 lg:h-10" />
                 Feed
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('nappy')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -640,7 +640,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
                 <Droplets className="w-8 h-8 lg:w-10 lg:h-10" />
                 Nappy
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('sleep')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
@@ -648,7 +648,7 @@ export function QuickEntry({ babyId, onActivityAdded }: QuickEntryProps) {
                 <Moon className="w-8 h-8 lg:w-10 lg:h-10" />
                 Sleep
               </Button>
-              <Button 
+              <Button
                 onClick={() => setActiveEntry('growth')}
                 className="h-24 lg:h-28 flex flex-col gap-2"
                 variant="outline"
