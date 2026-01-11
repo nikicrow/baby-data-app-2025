@@ -1,12 +1,13 @@
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Progress } from "../ui/progress";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -18,59 +19,198 @@ import {
   ComposedChart
 } from 'recharts';
 import { Baby, Clock, TrendingUp, Droplets, Zap, Timer } from "lucide-react";
+import { feedingApi } from "../../services/api";
+import type { FeedingSession } from "../../types/api";
+import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
 
-export function FeedAnalytics() {
-  // Mock data for detailed feeding analytics
-  const feedingFrequencyData = [
-    { time: '12AM', feeds: 1, avgDuration: 25, efficiency: 85 },
-    { time: '3AM', feeds: 1, avgDuration: 20, efficiency: 80 },
-    { time: '6AM', feeds: 1, avgDuration: 30, efficiency: 90 },
-    { time: '9AM', feeds: 1, avgDuration: 15, efficiency: 75 },
-    { time: '12PM', feeds: 1, avgDuration: 25, efficiency: 85 },
-    { time: '3PM', feeds: 1, avgDuration: 20, efficiency: 80 },
-    { time: '6PM', feeds: 1, avgDuration: 35, efficiency: 95 },
-    { time: '9PM', feeds: 1, avgDuration: 30, efficiency: 90 },
-  ];
+interface FeedAnalyticsProps {
+  babyId: string;
+  refreshTrigger?: number;
+}
 
-  const feedingTrendsData = [
-    { date: 'Jan 15', breastFeeds: 6, bottleFeeds: 2, pumpSessions: 1, totalVolume: 680 },
-    { date: 'Jan 16', breastFeeds: 7, bottleFeeds: 1, pumpSessions: 2, totalVolume: 720 },
-    { date: 'Jan 17', breastFeeds: 5, bottleFeeds: 3, pumpSessions: 1, totalVolume: 650 },
-    { date: 'Jan 18', breastFeeds: 8, bottleFeeds: 1, pumpSessions: 2, totalVolume: 750 },
-    { date: 'Jan 19', breastFeeds: 6, bottleFeeds: 2, pumpSessions: 1, totalVolume: 700 },
-    { date: 'Jan 20', breastFeeds: 7, bottleFeeds: 2, pumpSessions: 1, totalVolume: 730 },
-    { date: 'Jan 21', breastFeeds: 8, bottleFeeds: 1, pumpSessions: 2, totalVolume: 780 },
-  ];
+export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
+  const [feedings, setFeedings] = useState<FeedingSession[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    fetchFeedings();
+  }, [babyId, refreshTrigger]);
+
+  const fetchFeedings = async () => {
+    try {
+      setLoading(true);
+      const data = await feedingApi.getAll({ baby_id: babyId });
+      setFeedings(data);
+    } catch (error) {
+      console.error('Failed to fetch feeding data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center p-8">Loading feeding analytics...</div>;
+  }
+
+  // Calculate analytics from real data
+
+  // 24-hour feeding pattern - group by 3-hour windows
+  const feedingFrequencyData = Array.from({ length: 8 }, (_, i) => {
+    const hourStart = i * 3;
+    const timeLabel = `${hourStart === 0 ? 12 : hourStart > 12 ? hourStart - 12 : hourStart}${hourStart < 12 ? 'AM' : 'PM'}`;
+
+    const feedsInWindow = feedings.filter((f: FeedingSession) => {
+      const hour = getHours(parseISO(f.start_time));
+      return hour >= hourStart && hour < hourStart + 3;
+    });
+
+    const avgDuration = feedsInWindow.length > 0
+      ? feedsInWindow.reduce((sum: number, f: FeedingSession) => sum + (f.duration_minutes || 0), 0) / feedsInWindow.length
+      : 0;
+
+    return {
+      time: timeLabel,
+      feeds: feedsInWindow.length,
+      avgDuration: Math.round(avgDuration),
+      efficiency: avgDuration > 0 ? Math.min(100, Math.round((avgDuration / 30) * 100)) : 0, // Rough efficiency based on duration
+    };
+  });
+
+  // Last 7 days feeding trends
+  const feedingTrendsData = Array.from({ length: 7 }, (_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const dayFeedings = feedings.filter((f: FeedingSession) => {
+      const feedDate = parseISO(f.start_time);
+      return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
+    });
+
+    const breastFeeds = dayFeedings.filter((f: FeedingSession) => f.feeding_type === 'breast').length;
+    const bottleFeeds = dayFeedings.filter((f: FeedingSession) => f.feeding_type === 'bottle').length;
+    const solidFeeds = dayFeedings.filter((f: FeedingSession) => f.feeding_type === 'solid').length;
+    const totalVolume = dayFeedings.reduce((sum: number, f: FeedingSession) => sum + (f.amount_ml || 0), 0);
+
+    return {
+      date: format(date, 'MMM d'),
+      breastFeeds,
+      bottleFeeds,
+      pumpSessions: solidFeeds, // Reusing for solid foods
+      totalVolume,
+    };
+  });
+
+  // Calculate feeding intervals
+  const sortedFeedings = [...feedings].sort((a, b) =>
+    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  );
+
+  const intervals = sortedFeedings.slice(1).map((feed, i) => {
+    const prevFeed = sortedFeedings[i];
+    return differenceInMinutes(parseISO(feed.start_time), parseISO(prevFeed.start_time));
+  });
+
+  const intervalCounts = {
+    '1-2h': intervals.filter(i => i >= 60 && i < 120).length,
+    '2-3h': intervals.filter(i => i >= 120 && i < 180).length,
+    '3-4h': intervals.filter(i => i >= 180 && i < 240).length,
+    '4+h': intervals.filter(i => i >= 240).length,
+  };
+
+  const totalIntervals = intervals.length || 1;
   const feedingIntervalsData = [
-    { interval: '1-2h', count: 2, percentage: 15 },
-    { interval: '2-3h', count: 8, percentage: 60 },
-    { interval: '3-4h', count: 3, percentage: 20 },
-    { interval: '4+h', count: 1, percentage: 5 },
+    { interval: '1-2h', count: intervalCounts['1-2h'], percentage: Math.round((intervalCounts['1-2h'] / totalIntervals) * 100) },
+    { interval: '2-3h', count: intervalCounts['2-3h'], percentage: Math.round((intervalCounts['2-3h'] / totalIntervals) * 100) },
+    { interval: '3-4h', count: intervalCounts['3-4h'], percentage: Math.round((intervalCounts['3-4h'] / totalIntervals) * 100) },
+    { interval: '4+h', count: intervalCounts['4+h'], percentage: Math.round((intervalCounts['4+h'] / totalIntervals) * 100) },
   ];
+
+  // Breast side preference
+  const leftFeeds = feedings.filter((f: FeedingSession) => f.breast_side === 'left');
+  const rightFeeds = feedings.filter((f: FeedingSession) => f.breast_side === 'right');
+  const totalSideFeeds = leftFeeds.length + rightFeeds.length || 1;
+
+  const leftAvgDuration = leftFeeds.length > 0
+    ? leftFeeds.reduce((sum: number, f: FeedingSession) => sum + (f.duration_minutes || 0), 0) / leftFeeds.length
+    : 0;
+  const rightAvgDuration = rightFeeds.length > 0
+    ? rightFeeds.reduce((sum: number, f: FeedingSession) => sum + (f.duration_minutes || 0), 0) / rightFeeds.length
+    : 0;
 
   const sidePreferenceData = [
-    { name: 'Left', value: 55, color: '#8884d8', avgDuration: 18 },
-    { name: 'Right', value: 45, color: '#82ca9d', avgDuration: 16 },
-  ];
+    { name: 'Left', value: Math.round((leftFeeds.length / totalSideFeeds) * 100), color: '#8884d8', avgDuration: Math.round(leftAvgDuration) },
+    { name: 'Right', value: Math.round((rightFeeds.length / totalSideFeeds) * 100), color: '#82ca9d', avgDuration: Math.round(rightAvgDuration) },
+  ].filter(d => d.value > 0);
 
-  const volumeProgressData = [
-    { week: 'Week 1', avgBottle: 60, dailyTotal: 480, pumpOutput: 90 },
-    { week: 'Week 2', avgBottle: 80, dailyTotal: 560, pumpOutput: 120 },
-    { week: 'Week 3', avgBottle: 100, dailyTotal: 650, pumpOutput: 150 },
-    { week: 'Week 4', avgBottle: 120, dailyTotal: 720, pumpOutput: 180 },
-    { week: 'Week 5', avgBottle: 130, dailyTotal: 750, pumpOutput: 200 },
-    { week: 'Week 6', avgBottle: 140, dailyTotal: 780, pumpOutput: 220 },
-  ];
+  // Volume progress (last 6 weeks)
+  const volumeProgressData = Array.from({ length: 6 }, (_, i) => {
+    const weekStart = subDays(new Date(), (5 - i) * 7);
+    const weekEnd = subDays(new Date(), (5 - i) * 7 - 7);
 
+    const weekFeedings = feedings.filter((f: FeedingSession) => {
+      const feedDate = parseISO(f.start_time);
+      return feedDate >= weekEnd && feedDate < weekStart;
+    });
+
+    const bottleFeedings = weekFeedings.filter((f: FeedingSession) => f.feeding_type === 'bottle');
+    const avgBottle = bottleFeedings.length > 0
+      ? bottleFeedings.reduce((sum: number, f: FeedingSession) => sum + (f.amount_ml || 0), 0) / bottleFeedings.length
+      : 0;
+
+    const dailyTotal = weekFeedings.reduce((sum: number, f: FeedingSession) => sum + (f.amount_ml || 0), 0) / 7;
+
+    return {
+      week: `Week ${i + 1}`,
+      avgBottle: Math.round(avgBottle),
+      dailyTotal: Math.round(dailyTotal),
+      pumpOutput: 0, // We don't track pump sessions separately
+    };
+  });
+
+  // Cluster feeding analysis (2-hour windows)
   const clusterFeedingData = [
-    { timeRange: '5-7PM', frequency: 3.2, avgInterval: 45, isCluster: true },
-    { timeRange: '7-9PM', frequency: 2.8, avgInterval: 50, isCluster: true },
-    { timeRange: '9-11PM', frequency: 1.5, avgInterval: 120, isCluster: false },
-    { timeRange: '11PM-1AM', frequency: 1.0, avgInterval: 180, isCluster: false },
-    { timeRange: '1-3AM', frequency: 1.2, avgInterval: 150, isCluster: false },
-    { timeRange: '3-5AM', frequency: 1.0, avgInterval: 180, isCluster: false },
-  ];
+    { timeRange: '5-7PM', start: 17, end: 19 },
+    { timeRange: '7-9PM', start: 19, end: 21 },
+    { timeRange: '9-11PM', start: 21, end: 23 },
+    { timeRange: '11PM-1AM', start: 23, end: 1 },
+    { timeRange: '1-3AM', start: 1, end: 3 },
+    { timeRange: '3-5AM', start: 3, end: 5 },
+  ].map(window => {
+    const feedsInWindow = feedings.filter((f: FeedingSession) => {
+      const hour = getHours(parseISO(f.start_time));
+      if (window.start > window.end) {
+        // Crosses midnight
+        return hour >= window.start || hour < window.end;
+      }
+      return hour >= window.start && hour < window.end;
+    });
+
+    const frequency = feedsInWindow.length / 7; // Average per day over week
+    const isCluster = frequency > 2; // More than 2 feeds in 2-hour window = cluster
+
+    return {
+      timeRange: window.timeRange,
+      frequency: Number(frequency.toFixed(1)),
+      avgInterval: 0,
+      isCluster,
+    };
+  });
+
+  // Calculate key metrics
+  const last7DaysFeedings = feedings.filter((f: FeedingSession) => {
+    const feedDate = parseISO(f.start_time);
+    return feedDate >= subDays(new Date(), 7);
+  });
+
+  const dailyAverage = (last7DaysFeedings.length / 7).toFixed(1);
+  const avgDuration = feedings.length > 0
+    ? Math.round(feedings.reduce((sum: number, f: FeedingSession) => sum + (f.duration_minutes || 0), 0) / feedings.length)
+    : 0;
+
+  const todayVolume = feedings.filter((f: FeedingSession) => {
+    const feedDate = parseISO(f.start_time);
+    return startOfDay(feedDate).getTime() === startOfDay(new Date()).getTime();
+  }).reduce((sum: number, f: FeedingSession) => sum + (f.amount_ml || 0), 0);
+
+  const avgVolume = feedingTrendsData.reduce((sum, d) => sum + d.totalVolume, 0) / 7;
 
   return (
     <div className="space-y-6">
@@ -81,13 +221,13 @@ export function FeedAnalytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Daily Average</p>
-                <p className="text-2xl font-bold">8.2</p>
+                <p className="text-2xl font-bold">{dailyAverage}</p>
               </div>
               <Baby className="w-8 h-8 text-blue-600" />
             </div>
             <div className="flex items-center gap-1 mt-2">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-green-600">+0.3 vs last week</span>
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Last 7 days</span>
             </div>
           </CardContent>
         </Card>
@@ -97,12 +237,14 @@ export function FeedAnalytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Avg Duration</p>
-                <p className="text-2xl font-bold">22min</p>
+                <p className="text-2xl font-bold">{avgDuration > 0 ? `${avgDuration}min` : 'N/A'}</p>
               </div>
               <Timer className="w-8 h-8 text-purple-600" />
             </div>
             <div className="flex items-center gap-1 mt-2">
-              <span className="text-sm text-muted-foreground">Optimal range</span>
+              <span className="text-sm text-muted-foreground">
+                {avgDuration >= 15 && avgDuration <= 30 ? 'Optimal range' : 'Track more data'}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -111,12 +253,18 @@ export function FeedAnalytics() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Feed Efficiency</p>
-                <p className="text-2xl font-bold">87%</p>
+                <p className="text-sm text-muted-foreground">Avg Interval</p>
+                <p className="text-2xl font-bold">
+                  {intervals.length > 0
+                    ? `${Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length / 60 * 10) / 10}h`
+                    : 'N/A'}
+                </p>
               </div>
               <Droplets className="w-8 h-8 text-orange-600" />
             </div>
-            <Progress value={87} className="mt-2" />
+            <div className="flex items-center gap-1 mt-2">
+              <span className="text-sm text-muted-foreground">{intervals.length} intervals</span>
+            </div>
           </CardContent>
         </Card>
 
@@ -124,14 +272,14 @@ export function FeedAnalytics() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Daily Volume</p>
-                <p className="text-2xl font-bold">750ml</p>
+                <p className="text-sm text-muted-foreground">Avg Daily Volume</p>
+                <p className="text-2xl font-bold">{avgVolume > 0 ? `${Math.round(avgVolume)}ml` : 'N/A'}</p>
               </div>
               <Baby className="w-8 h-8 text-green-600" />
             </div>
             <div className="flex items-center gap-1 mt-2">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-green-600">+50ml vs target</span>
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Today: {todayVolume}ml</span>
             </div>
           </CardContent>
         </Card>
@@ -259,12 +407,18 @@ export function FeedAnalytics() {
             </ResponsiveContainer>
             <div className="mt-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Current Bottle Size</span>
-                <span className="font-semibold">140ml</span>
+                <span className="text-sm text-muted-foreground">Latest Bottle Size</span>
+                <span className="font-semibold">
+                  {volumeProgressData.length > 0 && volumeProgressData[volumeProgressData.length - 1].avgBottle > 0
+                    ? `${volumeProgressData[volumeProgressData.length - 1].avgBottle}ml`
+                    : 'No data'}
+                </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Pump Efficiency</span>
-                <span className="font-semibold text-green-600">220ml/session</span>
+                <span className="text-sm text-muted-foreground">Avg Daily Total</span>
+                <span className="font-semibold text-green-600">
+                  {avgVolume > 0 ? `${Math.round(avgVolume)}ml` : 'No data'}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -283,23 +437,35 @@ export function FeedAnalytics() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="timeRange" />
               <YAxis />
-              <Bar 
-                dataKey="frequency" 
-                fill={(data) => data.isCluster ? "#ff7c7c" : "#8884d8"} 
+              <Bar
+                dataKey="frequency"
+                fill={(data) => data.isCluster ? "#ff7c7c" : "#8884d8"}
                 name="Feeds per 2h period"
               />
             </BarChart>
           </ResponsiveContainer>
-          <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
-            <p className="text-sm">
-              <strong>Cluster Period Detected:</strong> 5-9PM shows 3x normal feeding frequency. 
-              This is typical evening cluster feeding behavior.
-            </p>
-          </div>
+          {clusterFeedingData.some(d => d.isCluster) ? (
+            <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <p className="text-sm">
+                <strong>Cluster Period Detected:</strong>{' '}
+                {clusterFeedingData
+                  .filter(d => d.isCluster)
+                  .map(d => d.timeRange)
+                  .join(', ')}{' '}
+                shows elevated feeding frequency. This is typical cluster feeding behavior.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-sm">
+                No clear cluster feeding patterns detected. Feeds are distributed relatively evenly throughout the day.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* AI Insights */}
+      {/* Data-based Insights */}
       <Card className="bg-gradient-to-r from-blue-50 to-green-50 border-blue-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -309,22 +475,43 @@ export function FeedAnalytics() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Growth Correlation</Badge>
-              <p className="text-sm">Daily intake increased 15% following growth spurt at 4 weeks. Weight gain on track.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Efficiency</Badge>
-              <p className="text-sm">Left side feeds are 12% longer but show higher satisfaction rates (longer intervals).</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Timing</Badge>
-              <p className="text-sm">Feeds within 30min of wake-up are 25% more efficient than delayed feeds.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Prediction</Badge>
-              <p className="text-sm">Based on current growth rate, expect bottle sizes to increase to 150ml within 2 weeks.</p>
-            </div>
+            {feedings.length > 0 ? (
+              <>
+                <div className="flex items-start gap-3">
+                  <Badge variant="secondary">Volume</Badge>
+                  <p className="text-sm">
+                    Average daily volume is {Math.round(avgVolume)}ml based on last 7 days of tracking.
+                    {todayVolume > avgVolume && ' Today is above average!'}
+                  </p>
+                </div>
+                {sidePreferenceData.length === 2 && (
+                  <div className="flex items-start gap-3">
+                    <Badge variant="secondary">Side Preference</Badge>
+                    <p className="text-sm">
+                      {sidePreferenceData[0].name} side: {sidePreferenceData[0].value}% ({sidePreferenceData[0].avgDuration}min avg),{' '}
+                      {sidePreferenceData[1].name} side: {sidePreferenceData[1].value}% ({sidePreferenceData[1].avgDuration}min avg).
+                    </p>
+                  </div>
+                )}
+                {intervals.length > 0 && (
+                  <div className="flex items-start gap-3">
+                    <Badge variant="secondary">Timing</Badge>
+                    <p className="text-sm">
+                      Most common feeding interval: {
+                        Object.entries(intervalCounts).sort((a, b) => b[1] - a[1])[0][0]
+                      } ({Math.round((Object.entries(intervalCounts).sort((a, b) => b[1] - a[1])[0][1] / totalIntervals) * 100)}% of feeds).
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary">Getting Started</Badge>
+                <p className="text-sm">
+                  Start tracking feedings to see personalized insights about patterns, volumes, and timing!
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
