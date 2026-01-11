@@ -111,6 +111,133 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
       height: g.length_cm || 0,
     }));
 
+  // Sleep pattern data - last 7 days
+  const sleepPatternData = Array.from({ length: 7 }, (_, i) => {
+    const date = subDays(new Date(), 6 - i);
+    const daySleeps = sleeps.filter((s: SleepSession) => {
+      const sleepDate = parseISO(s.sleep_start);
+      return startOfDay(sleepDate).getTime() === startOfDay(date).getTime();
+    });
+    const totalDuration = daySleeps.reduce((sum: number, s: SleepSession) => sum + (s.duration_minutes || 0), 0);
+    return {
+      time: format(date, 'EEE'),
+      duration: Math.round(totalDuration / 60 * 10) / 10, // hours with 1 decimal
+    };
+  });
+
+  // Correlation data - feeds vs diapers per day (last 14 days)
+  const correlationData = Array.from({ length: 14 }, (_, i) => {
+    const date = subDays(new Date(), 13 - i);
+    const dayFeeds = feedings.filter((f: FeedingSession) => {
+      const feedDate = parseISO(f.start_time);
+      return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
+    });
+    const dayDiapers = diapers.filter((d: DiaperEvent) => {
+      const diaperDate = parseISO(d.timestamp);
+      return startOfDay(diaperDate).getTime() === startOfDay(date).getTime();
+    });
+    return {
+      feeds: dayFeeds.length,
+      nappies: dayDiapers.length,
+      date: format(date, 'MMM d'),
+    };
+  }).filter(d => d.feeds > 0 || d.nappies > 0); // Only show days with data
+
+  // Calculate feeding statistics
+  const avgFeedsPerDay = weeklyFeedData.length > 0
+    ? (weeklyFeedData.reduce((sum, day) => sum + day.feeds, 0) / weeklyFeedData.length).toFixed(1)
+    : '0.0';
+  const totalFeedingTime = weeklyFeedData.reduce((sum, day) => sum + day.duration, 0);
+  const totalFeedingHours = (totalFeedingTime / 60).toFixed(1);
+
+  // Calculate sleep statistics
+  const longestSleep = sleeps.length > 0
+    ? Math.max(...sleeps.map((s: SleepSession) => s.duration_minutes || 0))
+    : 0;
+  const longestSleepHours = Math.floor(longestSleep / 60);
+  const longestSleepMins = longestSleep % 60;
+
+  const naps = sleeps.filter((s: SleepSession) => (s.duration_minutes || 0) < 180); // Naps < 3 hours
+  const avgNapDuration = naps.length > 0
+    ? naps.reduce((sum: number, s: SleepSession) => sum + (s.duration_minutes || 0), 0) / naps.length
+    : 0;
+  const avgNapHours = Math.floor(avgNapDuration / 60);
+  const avgNapMins = Math.round(avgNapDuration % 60);
+
+  // Calculate wake windows (time between sleep sessions)
+  const sortedSleeps = [...sleeps].sort((a, b) =>
+    new Date(a.sleep_start).getTime() - new Date(b.sleep_start).getTime()
+  );
+  const wakeWindows = sortedSleeps.slice(1).map((sleep, i) => {
+    const prevSleep = sortedSleeps[i];
+    const prevEnd = new Date(prevSleep.sleep_start).getTime() + (prevSleep.duration_minutes || 0) * 60000;
+    const currentStart = new Date(sleep.sleep_start).getTime();
+    return (currentStart - prevEnd) / 60000; // minutes
+  }).filter(w => w > 0 && w < 600); // Filter out unrealistic values (< 10 hours)
+
+  const avgWakeWindow = wakeWindows.length > 0
+    ? wakeWindows.reduce((sum, w) => sum + w, 0) / wakeWindows.length
+    : 0;
+  const avgWakeHours = Math.floor(avgWakeWindow / 60);
+  const avgWakeMins = Math.round(avgWakeWindow % 60);
+
+  // Calculate growth statistics
+  const sortedGrowths = [...growths].sort((a, b) =>
+    new Date(a.measurement_date).getTime() - new Date(b.measurement_date).getTime()
+  );
+  const firstGrowth = sortedGrowths[0];
+  const latestGrowth = sortedGrowths[sortedGrowths.length - 1];
+
+  const weightGain = firstGrowth && latestGrowth
+    ? (latestGrowth.weight_kg || 0) - (firstGrowth.weight_kg || 0)
+    : 0;
+  const weightGainPercent = firstGrowth && firstGrowth.weight_kg
+    ? ((weightGain / firstGrowth.weight_kg) * 100).toFixed(0)
+    : '0';
+
+  const heightGain = firstGrowth && latestGrowth
+    ? (latestGrowth.length_cm || 0) - (firstGrowth.length_cm || 0)
+    : 0;
+  const heightGainPercent = firstGrowth && firstGrowth.length_cm
+    ? ((heightGain / firstGrowth.length_cm) * 100).toFixed(0)
+    : '0';
+
+  // Calculate correlation coefficient (Pearson's r)
+  const calculateCorrelation = (data: Array<{ feeds: number; nappies: number }>) => {
+    if (data.length < 2) return 0;
+    const n = data.length;
+    const sumFeeds = data.reduce((sum, d) => sum + d.feeds, 0);
+    const sumNappies = data.reduce((sum, d) => sum + d.nappies, 0);
+    const sumFeedsNappies = data.reduce((sum, d) => sum + d.feeds * d.nappies, 0);
+    const sumFeedsSquared = data.reduce((sum, d) => sum + d.feeds * d.feeds, 0);
+    const sumNappiesSquared = data.reduce((sum, d) => sum + d.nappies * d.nappies, 0);
+
+    const numerator = n * sumFeedsNappies - sumFeeds * sumNappies;
+    const denominator = Math.sqrt((n * sumFeedsSquared - sumFeeds * sumFeeds) * (n * sumNappiesSquared - sumNappies * sumNappies));
+
+    return denominator === 0 ? 0 : numerator / denominator;
+  };
+
+  const correlation = calculateCorrelation(correlationData);
+  const avgDiapersPerFeed = correlationData.length > 0
+    ? (correlationData.reduce((sum, d) => sum + d.nappies, 0) / correlationData.reduce((sum, d) => sum + d.feeds, 0)).toFixed(1)
+    : '0.0';
+
+  // Generate smart insights
+  const avgFeedInterval = feedings.length > 1
+    ? (new Date(feedings[0].start_time).getTime() - new Date(feedings[feedings.length - 1].start_time).getTime()) / (feedings.length - 1) / 3600000 // hours
+    : 0;
+  const avgFeedIntervalHours = Math.abs(avgFeedInterval).toFixed(1);
+
+  // Weight milestone prediction
+  const daysOfGrowthData = sortedGrowths.length >= 2
+    ? (new Date(latestGrowth.measurement_date).getTime() - new Date(firstGrowth.measurement_date).getTime()) / (1000 * 60 * 60 * 24)
+    : 0;
+  const weightGainPerDay = daysOfGrowthData > 0 ? weightGain / daysOfGrowthData : 0;
+  const currentWeight = latestGrowth?.weight_kg || 0;
+  const nextMilestone = Math.ceil(currentWeight);
+  const daysToMilestone = weightGainPerDay > 0 ? Math.round((nextMilestone - currentWeight) / weightGainPerDay) : 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -248,8 +375,8 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
               </BarChart>
             </ResponsiveContainer>
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>Avg: 8.0 feeds/day</span>
-              <span>Total: 3.1h feeding time</span>
+              <span>Avg: {avgFeedsPerDay} feeds/day</span>
+              <span>Total: {totalFeedingHours}h feeding time</span>
             </div>
           </CardContent>
         </Card>
@@ -278,15 +405,21 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div className="text-center">
                 <p className="text-sm text-muted-foreground">Longest Stretch</p>
-                <p className="font-semibold">8h 30min</p>
+                <p className="font-semibold">
+                  {longestSleep > 0 ? `${longestSleepHours}h ${longestSleepMins}min` : 'No data'}
+                </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-muted-foreground">Avg Nap</p>
-                <p className="font-semibold">1h 15min</p>
+                <p className="font-semibold">
+                  {avgNapDuration > 0 ? `${avgNapHours}h ${avgNapMins}min` : 'No data'}
+                </p>
               </div>
               <div className="text-center">
                 <p className="text-sm text-muted-foreground">Wake Windows</p>
-                <p className="font-semibold">2h 45min</p>
+                <p className="font-semibold">
+                  {avgWakeWindow > 0 ? `${avgWakeHours}h ${avgWakeMins}min` : 'No data'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -365,13 +498,17 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
                 <p className="text-sm text-muted-foreground">Weight Gain</p>
-                <p className="font-semibold text-green-600">+1.1kg (34%)</p>
-                <Progress value={75} className="mt-1" />
+                <p className="font-semibold text-green-600">
+                  {weightGain > 0 ? `+${weightGain.toFixed(1)}kg (${weightGainPercent}%)` : 'No data'}
+                </p>
+                <Progress value={Math.min(Number(weightGainPercent), 100)} className="mt-1" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Height Growth</p>
-                <p className="font-semibold text-blue-600">+5cm (10%)</p>
-                <Progress value={60} className="mt-1" />
+                <p className="font-semibold text-blue-600">
+                  {heightGain > 0 ? `+${heightGain.toFixed(1)}cm (${heightGainPercent}%)` : 'No data'}
+                </p>
+                <Progress value={Math.min(Number(heightGainPercent), 100)} className="mt-1" />
               </div>
             </div>
           </CardContent>
@@ -395,8 +532,15 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
           </ResponsiveContainer>
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm">
-              <strong>Insight:</strong> Strong positive correlation (r=0.89) between feeds and diaper changes. 
-              Expect about 0.8 diapers per feed on average.
+              <strong>Insight:</strong> {correlationData.length >= 2 ? (
+                <>
+                  {correlation > 0.7 ? 'Strong' : correlation > 0.4 ? 'Moderate' : 'Weak'} positive correlation
+                  (r={correlation.toFixed(2)}) between feeds and diaper changes.
+                  Expect about {avgDiapersPerFeed} diapers per feed on average.
+                </>
+              ) : (
+                'Need more data to calculate correlation between feeds and diaper changes.'
+              )}
             </p>
           </div>
         </CardContent>
@@ -412,18 +556,42 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Pattern</Badge>
-              <p className="text-sm">Your baby tends to sleep longer after cluster feeding sessions in the evening.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Prediction</Badge>
-              <p className="text-sm">Based on growth rate, expect next weight milestone (5kg) in approximately 10 days.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <Badge variant="secondary">Tip</Badge>
-              <p className="text-sm">Optimal feeding window appears to be every 2.5-3 hours during daytime for best sleep patterns.</p>
-            </div>
+            {sleeps.length > 0 && (
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary">Pattern</Badge>
+                <p className="text-sm">
+                  {longestSleep > 0
+                    ? `Your baby's longest sleep session was ${longestSleepHours}h ${longestSleepMins}min. `
+                    : 'Track more sleep sessions to identify patterns. '}
+                  {avgNapDuration > 0 && `Average nap duration is ${avgNapHours}h ${avgNapMins}min.`}
+                </p>
+              </div>
+            )}
+            {daysToMilestone > 0 && currentWeight > 0 && (
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary">Prediction</Badge>
+                <p className="text-sm">
+                  Based on growth rate, expect next weight milestone ({nextMilestone}kg) in approximately {daysToMilestone} days.
+                </p>
+              </div>
+            )}
+            {avgFeedIntervalHours !== '0.0' && Number(avgFeedIntervalHours) > 0 && (
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary">Tip</Badge>
+                <p className="text-sm">
+                  Your average feeding interval is every {avgFeedIntervalHours} hours.
+                  {avgWakeWindow > 0 && ` Wake windows average ${avgWakeHours}h ${avgWakeMins}min.`}
+                </p>
+              </div>
+            )}
+            {sleeps.length === 0 && feedings.length === 0 && growths.length === 0 && (
+              <div className="flex items-start gap-3">
+                <Badge variant="secondary">Getting Started</Badge>
+                <p className="text-sm">
+                  Start logging your baby's activities to see personalized insights and patterns here!
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -431,19 +599,19 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
         </TabsContent>
 
         <TabsContent value="sleep" className="mt-6">
-          <SleepAnalytics />
+          <SleepAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="feeds" className="mt-6">
-          <FeedAnalytics />
+          <FeedAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="nappies" className="mt-6">
-          <NappyAnalytics />
+          <NappyAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="growth" className="mt-6">
-          <GrowthAnalytics />
+          <GrowthAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
         </TabsContent>
       </Tabs>
     </div>
