@@ -1,12 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { Baby, Droplets, Moon, Scale, Clock, Edit, Trash2, TrendingUp } from "lucide-react";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Textarea } from "./ui/textarea";
+import { Baby, Droplets, Moon, Scale, Clock, Edit, Trash2, TrendingUp, Loader2 } from "lucide-react";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { toast } from "sonner";
 import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
-import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
+import type {
+  FeedingSession,
+  SleepSession,
+  DiaperEvent,
+  GrowthMeasurement,
+  FeedingSessionUpdate,
+  SleepSessionUpdate,
+  DiaperEventUpdate,
+  GrowthMeasurementUpdate,
+} from "../types/api";
 
 interface ActivityFeedProps {
   babyId: string;
@@ -20,12 +34,25 @@ interface Activity {
   time: string;
   details: string;
   notes?: string;
+  // Store original data for editing
+  originalData?: FeedingSession | SleepSession | DiaperEvent | GrowthMeasurement;
 }
 
 export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [latestWeight, setLatestWeight] = useState<number | null>(null);
+
+  // Delete state
+  const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+
+  // Edit state
+  const [activityToEdit, setActivityToEdit] = useState<Activity | null>(null);
+  const [editFormData, setEditFormData] = useState<Record<string, any>>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const editDialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     fetchActivities();
@@ -105,6 +132,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       time: format(timestamp, 'h:mm a'),
       details,
       notes: feeding.notes,
+      originalData: feeding,
     };
   };
 
@@ -121,6 +149,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       time: format(timestamp, 'h:mm a'),
       details: `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`,
       notes: sleep.notes,
+      originalData: sleep,
     };
   };
 
@@ -137,6 +166,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       time: format(timestamp, 'h:mm a'),
       details: `Diaper change - ${types.join(' & ') || 'clean'}`,
       notes: diaper.notes,
+      originalData: diaper,
     };
   };
 
@@ -153,7 +183,408 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       time: format(timestamp, 'h:mm a'),
       details: `Growth measurement - ${details.join(', ')}`,
       notes: growth.notes,
+      originalData: growth,
     };
+  };
+
+  // Delete handlers
+  const handleDeleteClick = (activity: Activity) => {
+    setActivityToDelete(activity);
+    deleteDialogRef.current?.showModal();
+  };
+
+  const closeDeleteDialog = () => {
+    deleteDialogRef.current?.close();
+    setActivityToDelete(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!activityToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      switch (activityToDelete.type) {
+        case 'feed':
+          await feedingApi.delete(activityToDelete.id);
+          break;
+        case 'sleep':
+          await sleepApi.delete(activityToDelete.id);
+          break;
+        case 'nappy':
+          await diaperApi.delete(activityToDelete.id);
+          break;
+        case 'growth':
+          await growthApi.delete(activityToDelete.id);
+          break;
+      }
+      toast.success('Activity deleted successfully');
+      fetchActivities();
+    } catch (error: any) {
+      console.error('Failed to delete activity:', error);
+      toast.error(`Failed to delete: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsDeleting(false);
+      closeDeleteDialog();
+    }
+  };
+
+  // Edit handlers
+  const handleEditClick = (activity: Activity) => {
+    setActivityToEdit(activity);
+
+    // Pre-populate form based on activity type
+    if (activity.originalData) {
+      switch (activity.type) {
+        case 'feed': {
+          const feeding = activity.originalData as FeedingSession;
+          const feedingDate = parseISO(feeding.start_time);
+          setEditFormData({
+            feedType: feeding.feeding_type,
+            leftBreastDuration: feeding.left_breast_duration || '',
+            rightBreastDuration: feeding.right_breast_duration || '',
+            breastStarted: feeding.breast_started || '',
+            volume: feeding.volume_consumed_ml || '',
+            notes: feeding.notes || '',
+            date: format(feedingDate, 'yyyy-MM-dd'),
+            time: format(feedingDate, 'HH:mm'),
+          });
+          break;
+        }
+        case 'sleep': {
+          const sleep = activity.originalData as SleepSession;
+          const sleepDate = parseISO(sleep.sleep_start);
+          setEditFormData({
+            sleepType: sleep.sleep_type,
+            location: sleep.location,
+            sleepQuality: sleep.sleep_quality,
+            notes: sleep.notes || '',
+            date: format(sleepDate, 'yyyy-MM-dd'),
+            time: format(sleepDate, 'HH:mm'),
+          });
+          break;
+        }
+        case 'nappy': {
+          const diaper = activity.originalData as DiaperEvent;
+          const diaperDate = parseISO(diaper.timestamp);
+          setEditFormData({
+            hasUrine: diaper.has_urine,
+            hasStool: diaper.has_stool,
+            notes: diaper.notes || '',
+            date: format(diaperDate, 'yyyy-MM-dd'),
+            time: format(diaperDate, 'HH:mm'),
+          });
+          break;
+        }
+        case 'growth': {
+          const growth = activity.originalData as GrowthMeasurement;
+          const growthDate = parseISO(growth.measurement_date);
+          setEditFormData({
+            weight: growth.weight_kg || '',
+            length: growth.length_cm || '',
+            notes: growth.notes || '',
+            date: format(growthDate, 'yyyy-MM-dd'),
+            time: format(growthDate, 'HH:mm'),
+          });
+          break;
+        }
+      }
+    }
+    editDialogRef.current?.showModal();
+  };
+
+  const closeEditDialog = () => {
+    editDialogRef.current?.close();
+    setActivityToEdit(null);
+    setEditFormData({});
+  };
+
+  const handleEditSubmit = async () => {
+    if (!activityToEdit) return;
+
+    setIsEditing(true);
+    try {
+      // Build timestamp from date and time fields
+      const newTimestamp = editFormData.date && editFormData.time
+        ? new Date(`${editFormData.date}T${editFormData.time}`).toISOString()
+        : undefined;
+
+      switch (activityToEdit.type) {
+        case 'feed': {
+          const updateData: FeedingSessionUpdate = {
+            notes: editFormData.notes || undefined,
+            start_time: newTimestamp,
+          };
+          if (editFormData.feedType === 'breast') {
+            updateData.left_breast_duration = editFormData.leftBreastDuration ? parseInt(editFormData.leftBreastDuration) : undefined;
+            updateData.right_breast_duration = editFormData.rightBreastDuration ? parseInt(editFormData.rightBreastDuration) : undefined;
+            updateData.breast_started = editFormData.breastStarted || undefined;
+          } else if (editFormData.feedType === 'bottle') {
+            updateData.volume_consumed_ml = editFormData.volume ? parseInt(editFormData.volume) : undefined;
+            updateData.volume_offered_ml = editFormData.volume ? parseInt(editFormData.volume) : undefined;
+          }
+          await feedingApi.update(activityToEdit.id, updateData);
+          break;
+        }
+        case 'sleep': {
+          const updateData: SleepSessionUpdate = {
+            sleep_type: editFormData.sleepType,
+            location: editFormData.location,
+            sleep_quality: editFormData.sleepQuality,
+            notes: editFormData.notes || undefined,
+            sleep_start: newTimestamp,
+          };
+          await sleepApi.update(activityToEdit.id, updateData);
+          break;
+        }
+        case 'nappy': {
+          const updateData: DiaperEventUpdate = {
+            has_urine: editFormData.hasUrine,
+            has_stool: editFormData.hasStool,
+            notes: editFormData.notes || undefined,
+            timestamp: newTimestamp,
+          };
+          await diaperApi.update(activityToEdit.id, updateData);
+          break;
+        }
+        case 'growth': {
+          const updateData: GrowthMeasurementUpdate = {
+            weight_kg: editFormData.weight ? parseFloat(editFormData.weight) : undefined,
+            length_cm: editFormData.length ? parseFloat(editFormData.length) : undefined,
+            notes: editFormData.notes || undefined,
+            measurement_date: newTimestamp,
+          };
+          await growthApi.update(activityToEdit.id, updateData);
+          break;
+        }
+      }
+      toast.success('Activity updated successfully');
+      fetchActivities();
+    } catch (error: any) {
+      console.error('Failed to update activity:', error);
+      toast.error(`Failed to update: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setIsEditing(false);
+      closeEditDialog();
+    }
+  };
+
+  // Reusable date/time picker for edit forms
+  const renderDateTimePicker = () => (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <Label htmlFor="editDate">Date</Label>
+        <Input
+          id="editDate"
+          type="date"
+          value={editFormData.date || ''}
+          onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label htmlFor="editTime">Time</Label>
+        <Input
+          id="editTime"
+          type="time"
+          value={editFormData.time || ''}
+          onChange={(e) => setEditFormData({ ...editFormData, time: e.target.value })}
+        />
+      </div>
+    </div>
+  );
+
+  // Render edit form based on activity type
+  const renderEditForm = () => {
+    if (!activityToEdit) return null;
+
+    switch (activityToEdit.type) {
+      case 'feed': {
+        const feeding = activityToEdit.originalData as FeedingSession;
+        return (
+          <div className="space-y-4">
+            {renderDateTimePicker()}
+            <div className="text-sm text-muted-foreground">
+              Type: <span className="font-medium capitalize">{feeding.feeding_type}</span>
+            </div>
+            {feeding.feeding_type === 'breast' && (
+              <>
+                <div>
+                  <Label htmlFor="leftBreastDuration">Left breast (minutes)</Label>
+                  <Input
+                    id="leftBreastDuration"
+                    type="number"
+                    value={editFormData.leftBreastDuration}
+                    onChange={(e) => setEditFormData({ ...editFormData, leftBreastDuration: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="rightBreastDuration">Right breast (minutes)</Label>
+                  <Input
+                    id="rightBreastDuration"
+                    type="number"
+                    value={editFormData.rightBreastDuration}
+                    onChange={(e) => setEditFormData({ ...editFormData, rightBreastDuration: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
+            {feeding.feeding_type === 'bottle' && (
+              <div>
+                <Label htmlFor="volume">Volume (ml)</Label>
+                <Input
+                  id="volume"
+                  type="number"
+                  value={editFormData.volume}
+                  onChange={(e) => setEditFormData({ ...editFormData, volume: e.target.value })}
+                />
+              </div>
+            )}
+            <div>
+              <Label htmlFor="feedNotes">Notes</Label>
+              <Textarea
+                id="feedNotes"
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+      }
+      case 'sleep':
+        return (
+          <div className="space-y-4">
+            {renderDateTimePicker()}
+            <div>
+              <Label htmlFor="sleepType">Sleep Type</Label>
+              <Select
+                value={editFormData.sleepType}
+                onValueChange={(value) => setEditFormData({ ...editFormData, sleepType: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nap">Nap</SelectItem>
+                  <SelectItem value="nighttime">Nighttime</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="sleepQuality">Quality</Label>
+              <Select
+                value={editFormData.sleepQuality}
+                onValueChange={(value) => setEditFormData({ ...editFormData, sleepQuality: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="restless">Restless</SelectItem>
+                  <SelectItem value="fair">Fair</SelectItem>
+                  <SelectItem value="good">Good</SelectItem>
+                  <SelectItem value="deep">Deep</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="location">Location</Label>
+              <Select
+                value={editFormData.location}
+                onValueChange={(value) => setEditFormData({ ...editFormData, location: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="crib">Crib</SelectItem>
+                  <SelectItem value="bassinet">Bassinet</SelectItem>
+                  <SelectItem value="parent_bed">Parent's bed</SelectItem>
+                  <SelectItem value="stroller">Stroller</SelectItem>
+                  <SelectItem value="car_seat">Car seat</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="sleepNotes">Notes</Label>
+              <Textarea
+                id="sleepNotes"
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+      case 'nappy':
+        return (
+          <div className="space-y-4">
+            {renderDateTimePicker()}
+            <div className="flex items-center gap-4">
+              <Label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editFormData.hasUrine}
+                  onChange={(e) => setEditFormData({ ...editFormData, hasUrine: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                Wet
+              </Label>
+              <Label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editFormData.hasStool}
+                  onChange={(e) => setEditFormData({ ...editFormData, hasStool: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                Dirty
+              </Label>
+            </div>
+            <div>
+              <Label htmlFor="nappyNotes">Notes</Label>
+              <Textarea
+                id="nappyNotes"
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+      case 'growth':
+        return (
+          <div className="space-y-4">
+            {renderDateTimePicker()}
+            <div>
+              <Label htmlFor="weight">Weight (kg)</Label>
+              <Input
+                id="weight"
+                type="number"
+                step="0.1"
+                value={editFormData.weight}
+                onChange={(e) => setEditFormData({ ...editFormData, weight: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="length">Length (cm)</Label>
+              <Input
+                id="length"
+                type="number"
+                step="0.1"
+                value={editFormData.length}
+                onChange={(e) => setEditFormData({ ...editFormData, length: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="growthNotes">Notes</Label>
+              <Textarea
+                id="growthNotes"
+                value={editFormData.notes}
+                onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   if (loading) {
@@ -346,10 +777,20 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                                     </div>
                                   </div>
                                   <div className="flex gap-1">
-                                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => handleEditClick(activity)}
+                                    >
                                       <Edit className="w-3 h-3" />
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0 text-destructive"
+                                      onClick={() => handleDeleteClick(activity)}
+                                    >
                                       <Trash2 className="w-3 h-3" />
                                     </Button>
                                   </div>
@@ -433,7 +874,75 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
         </div>
       </div>
 
+      {/* Delete Confirmation Dialog - Native HTML dialog */}
+      <dialog
+        ref={deleteDialogRef}
+        className="rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50 w-full max-w-md"
+        onClose={() => setActivityToDelete(null)}
+      >
+        <div className="p-6">
+          <div className="flex flex-col gap-2 text-center sm:text-left mb-4">
+            <h2 className="text-lg font-semibold">Delete Activity</h2>
+            <p className="text-muted-foreground text-sm">
+              Are you sure you want to delete this {activityToDelete?.type} entry? This action cannot be undone.
+            </p>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </Button>
+          </div>
+        </div>
+      </dialog>
 
+      {/* Edit Dialog - Native HTML dialog */}
+      <dialog
+        ref={editDialogRef}
+        className="rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50 w-full max-w-lg"
+        onClose={() => {
+          setActivityToEdit(null);
+          setEditFormData({});
+        }}
+      >
+        <div className="p-6">
+          <div className="flex flex-col gap-2 text-center sm:text-left mb-4">
+            <h2 className="text-lg font-semibold capitalize">Edit {activityToEdit?.type}</h2>
+            <p className="text-muted-foreground text-sm">
+              Make changes to this activity entry.
+            </p>
+          </div>
+          {renderEditForm()}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end mt-6">
+            <Button variant="outline" onClick={closeEditDialog} disabled={isEditing}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditSubmit} disabled={isEditing}>
+              {isEditing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </div>
+        </div>
+      </dialog>
     </div>
   );
 }
