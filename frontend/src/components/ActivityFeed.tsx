@@ -7,16 +7,6 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "./ui/alert-dialog";
 import { Baby, Droplets, Moon, Scale, Clock, Edit, Trash2, TrendingUp, Loader2 } from "lucide-react";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -54,9 +44,9 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   const [latestWeight, setLatestWeight] = useState<number | null>(null);
 
   // Delete state
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
 
   // Edit state
   const [activityToEdit, setActivityToEdit] = useState<Activity | null>(null);
@@ -200,7 +190,12 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   // Delete handlers
   const handleDeleteClick = (activity: Activity) => {
     setActivityToDelete(activity);
-    setDeleteDialogOpen(true);
+    deleteDialogRef.current?.showModal();
+  };
+
+  const closeDeleteDialog = () => {
+    deleteDialogRef.current?.close();
+    setActivityToDelete(null);
   };
 
   const handleDeleteConfirm = async () => {
@@ -229,8 +224,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       toast.error(`Failed to delete: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsDeleting(false);
-      setDeleteDialogOpen(false);
-      setActivityToDelete(null);
+      closeDeleteDialog();
     }
   };
 
@@ -880,21 +874,27 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Activity</AlertDialogTitle>
-            <AlertDialogDescription>
+      {/* Delete Confirmation Dialog - Native HTML dialog */}
+      <dialog
+        ref={deleteDialogRef}
+        className="rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50 w-full max-w-md"
+        onClose={() => setActivityToDelete(null)}
+      >
+        <div className="p-6">
+          <div className="flex flex-col gap-2 text-center sm:text-left mb-4">
+            <h2 className="text-lg font-semibold">Delete Activity</h2>
+            <p className="text-muted-foreground text-sm">
               Are you sure you want to delete this {activityToDelete?.type} entry? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            </p>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? (
                 <>
@@ -904,10 +904,10 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
               ) : (
                 'Delete'
               )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </div>
+        </div>
+      </dialog>
 
       {/* Edit Dialog - Native HTML dialog */}
       <dialog
