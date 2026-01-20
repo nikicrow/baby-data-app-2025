@@ -138,16 +138,30 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
 
   const transformSleep = (sleep: SleepSession): Activity => {
     const timestamp = parseISO(sleep.sleep_start);
-    const duration = sleep.duration_minutes || 0;
-    const hours = Math.floor(duration / 60);
-    const mins = duration % 60;
+    const isOngoing = !sleep.sleep_end;
+
+    let details: string;
+    if (isOngoing) {
+      // Calculate elapsed time for ongoing sleep
+      const startTime = timestamp.getTime();
+      const now = Date.now();
+      const elapsedMins = Math.floor((now - startTime) / (1000 * 60));
+      const hours = Math.floor(elapsedMins / 60);
+      const mins = elapsedMins % 60;
+      details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m so far (ongoing)`;
+    } else {
+      const duration = sleep.duration_minutes || 0;
+      const hours = Math.floor(duration / 60);
+      const mins = duration % 60;
+      details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`;
+    }
 
     return {
       id: sleep.id,
       type: 'sleep',
       timestamp,
       time: format(timestamp, 'h:mm a'),
-      details: `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`,
+      details,
       notes: sleep.notes,
       originalData: sleep,
     };
@@ -252,14 +266,20 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
         }
         case 'sleep': {
           const sleep = activity.originalData as SleepSession;
-          const sleepDate = parseISO(sleep.sleep_start);
+          const sleepStartDate = parseISO(sleep.sleep_start);
+          const sleepEndDate = sleep.sleep_end ? parseISO(sleep.sleep_end) : null;
+          const durationMins = sleep.duration_minutes || 0;
           setEditFormData({
             sleepType: sleep.sleep_type,
             location: sleep.location,
             sleepQuality: sleep.sleep_quality,
             notes: sleep.notes || '',
-            date: format(sleepDate, 'yyyy-MM-dd'),
-            time: format(sleepDate, 'HH:mm'),
+            startDate: format(sleepStartDate, 'yyyy-MM-dd'),
+            startTime: format(sleepStartDate, 'HH:mm'),
+            endDate: sleepEndDate ? format(sleepEndDate, 'yyyy-MM-dd') : format(sleepStartDate, 'yyyy-MM-dd'),
+            endTime: sleepEndDate ? format(sleepEndDate, 'HH:mm') : '',
+            duration: durationMins > 0 ? durationMins.toString() : '',
+            lastChanged: null as 'start' | 'end' | 'duration' | null, // Track which field was last changed
           });
           break;
         }
@@ -326,12 +346,21 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
           break;
         }
         case 'sleep': {
+          // Build start and end timestamps from the form data
+          const sleepStart = editFormData.startDate && editFormData.startTime
+            ? new Date(`${editFormData.startDate}T${editFormData.startTime}`).toISOString()
+            : undefined;
+          const sleepEnd = editFormData.endDate && editFormData.endTime
+            ? new Date(`${editFormData.endDate}T${editFormData.endTime}`).toISOString()
+            : undefined;
+
           const updateData: SleepSessionUpdate = {
             sleep_type: editFormData.sleepType,
             location: editFormData.location,
             sleep_quality: editFormData.sleepQuality,
             notes: editFormData.notes || undefined,
-            sleep_start: newTimestamp,
+            sleep_start: sleepStart,
+            sleep_end: sleepEnd,
           };
           await sleepApi.update(activityToEdit.id, updateData);
           break;
@@ -391,6 +420,56 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       </div>
     </div>
   );
+
+  // Handle sleep time changes with smart recalculation
+  const handleSleepTimeChange = (field: string, value: string) => {
+    const newData = { ...editFormData, [field]: value };
+
+    // Helper to build Date from date + time strings
+    const buildDate = (dateStr: string, timeStr: string): Date | null => {
+      if (!dateStr || !timeStr) return null;
+      return new Date(`${dateStr}T${timeStr}`);
+    };
+
+    // Calculate based on which field changed
+    if (field === 'startDate' || field === 'startTime') {
+      // Start changed: keep end fixed, recalculate duration
+      const start = buildDate(
+        field === 'startDate' ? value : editFormData.startDate,
+        field === 'startTime' ? value : editFormData.startTime
+      );
+      const end = buildDate(newData.endDate, newData.endTime);
+
+      if (start && end && end > start) {
+        const durationMins = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+        newData.duration = durationMins.toString();
+      }
+    } else if (field === 'endDate' || field === 'endTime') {
+      // End changed: keep start fixed, recalculate duration
+      const start = buildDate(newData.startDate, newData.startTime);
+      const end = buildDate(
+        field === 'endDate' ? value : editFormData.endDate,
+        field === 'endTime' ? value : editFormData.endTime
+      );
+
+      if (start && end && end > start) {
+        const durationMins = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+        newData.duration = durationMins.toString();
+      }
+    } else if (field === 'duration') {
+      // Duration changed: keep start fixed, recalculate end
+      const start = buildDate(newData.startDate, newData.startTime);
+      const durationMins = parseInt(value) || 0;
+
+      if (start && durationMins > 0) {
+        const end = new Date(start.getTime() + durationMins * 60 * 1000);
+        newData.endDate = format(end, 'yyyy-MM-dd');
+        newData.endTime = format(end, 'HH:mm');
+      }
+    }
+
+    setEditFormData(newData);
+  };
 
   // Render edit form based on activity type
   const renderEditForm = () => {
@@ -452,38 +531,90 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       case 'sleep':
         return (
           <div className="space-y-4">
-            {renderDateTimePicker()}
+            {/* Start Time */}
             <div>
-              <Label htmlFor="sleepType">Sleep Type</Label>
-              <Select
-                value={editFormData.sleepType}
-                onValueChange={(value) => setEditFormData({ ...editFormData, sleepType: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nap">Nap</SelectItem>
-                  <SelectItem value="nighttime">Nighttime</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-sm font-medium">Fell Asleep</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <Input
+                  type="date"
+                  value={editFormData.startDate || ''}
+                  onChange={(e) => handleSleepTimeChange('startDate', e.target.value)}
+                />
+                <Input
+                  type="time"
+                  value={editFormData.startTime || ''}
+                  onChange={(e) => handleSleepTimeChange('startTime', e.target.value)}
+                />
+              </div>
             </div>
+
+            {/* End Time */}
             <div>
-              <Label htmlFor="sleepQuality">Quality</Label>
-              <Select
-                value={editFormData.sleepQuality}
-                onValueChange={(value) => setEditFormData({ ...editFormData, sleepQuality: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="restless">Restless</SelectItem>
-                  <SelectItem value="fair">Fair</SelectItem>
-                  <SelectItem value="good">Good</SelectItem>
-                  <SelectItem value="deep">Deep</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-sm font-medium">Woke Up</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <Input
+                  type="date"
+                  value={editFormData.endDate || ''}
+                  onChange={(e) => handleSleepTimeChange('endDate', e.target.value)}
+                />
+                <Input
+                  type="time"
+                  value={editFormData.endTime || ''}
+                  onChange={(e) => handleSleepTimeChange('endTime', e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div>
+              <Label htmlFor="sleepDuration" className="text-sm font-medium">Duration (minutes)</Label>
+              <Input
+                id="sleepDuration"
+                type="number"
+                value={editFormData.duration || ''}
+                onChange={(e) => handleSleepTimeChange('duration', e.target.value)}
+                className="mt-1"
+              />
+              {editFormData.duration && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {Math.floor(parseInt(editFormData.duration) / 60)}h {parseInt(editFormData.duration) % 60}m
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="sleepType">Sleep Type</Label>
+                <Select
+                  value={editFormData.sleepType}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepType: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nap">Nap</SelectItem>
+                    <SelectItem value="nighttime">Nighttime</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="sleepQuality">Quality</Label>
+                <Select
+                  value={editFormData.sleepQuality}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepQuality: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="restless">Restless</SelectItem>
+                    <SelectItem value="fair">Fair</SelectItem>
+                    <SelectItem value="good">Good</SelectItem>
+                    <SelectItem value="deep">Deep</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
               <Label htmlFor="location">Location</Label>

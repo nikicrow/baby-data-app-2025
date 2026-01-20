@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -7,8 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner@2.0.3";
-import { Baby, Droplets, Moon, Scale, Zap, Loader2, Clock } from "lucide-react";
+import { Baby, Droplets, Moon, Scale, Zap, Loader2, Clock, Sun } from "lucide-react";
 import { feedingApi, diaperApi, sleepApi, growthApi } from "../services/api";
+import type { SleepSession } from "../types/api";
+
+// Helper to format duration as "Xh Ym"
+const formatDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+};
 import type {
   FeedingSessionCreate,
   DiaperEventCreate,
@@ -28,6 +38,42 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   const [useCustomTime, setUseCustomTime] = useState(false);
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
+  const [activeSleep, setActiveSleep] = useState<SleepSession | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<string>('');
+
+  // Check for active sleep session (one with no end time)
+  useEffect(() => {
+    const checkActiveSleep = async () => {
+      try {
+        const sessions = await sleepApi.getAll({ baby_id: babyId });
+        const active = sessions.find(s => s.sleep_start && !s.sleep_end);
+        setActiveSleep(active || null);
+      } catch (error) {
+        console.error('Failed to check for active sleep:', error);
+      }
+    };
+    checkActiveSleep();
+  }, [babyId]);
+
+  // Update elapsed time every minute when there's an active sleep
+  useEffect(() => {
+    if (!activeSleep) {
+      setElapsedTime('');
+      return;
+    }
+
+    const updateElapsed = () => {
+      const startTime = new Date(activeSleep.sleep_start).getTime();
+      const now = Date.now();
+      const elapsedMins = Math.floor((now - startTime) / (1000 * 60));
+      setElapsedTime(formatDuration(elapsedMins));
+    };
+
+    updateElapsed(); // Initial update
+    const interval = setInterval(updateElapsed, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [activeSleep]);
 
   // Helper function to get timestamp (current or custom)
   const getTimestamp = (): string => {
@@ -50,6 +96,36 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     setUseCustomTime(!useCustomTime);
   };
 
+  // Helper to refresh active sleep state
+  const refreshActiveSleep = async () => {
+    try {
+      const sessions = await sleepApi.getAll({ baby_id: babyId });
+      const active = sessions.find(s => s.sleep_start && !s.sleep_end);
+      setActiveSleep(active || null);
+    } catch (error) {
+      console.error('Failed to refresh active sleep:', error);
+    }
+  };
+
+  // Compute sleep time preview for "Log Past Sleep"
+  const sleepTimePreview = useMemo(() => {
+    if (formData.sleepType !== 'log' || !formData.duration) return null;
+
+    const duration = parseInt(formData.duration) || 0;
+    if (duration <= 0) return null;
+
+    const endTime = useCustomTime && customDate && customTime
+      ? new Date(`${customDate}T${customTime}`)
+      : new Date();
+    const startTime = new Date(endTime.getTime() - duration * 60 * 1000);
+
+    return {
+      start: startTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      end: endTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      formatted: formatDuration(duration),
+    };
+  }, [formData.sleepType, formData.duration, useCustomTime, customDate, customTime]);
+
   const handleSubmit = async (type: string) => {
     setIsSubmitting(true);
     try {
@@ -62,6 +138,8 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
           break;
         case 'sleep':
           await handleSleepSubmit();
+          // Refresh active sleep state after sleep actions
+          await refreshActiveSleep();
           break;
         case 'growth':
           await handleGrowthSubmit();
@@ -77,7 +155,10 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
     } catch (error: any) {
       console.error(`Failed to log ${type}:`, error);
-      toast.error(`Failed to log ${type}. ${error.response?.data?.detail || error.message}`);
+      // Only show generic error if it's not a validation error we already handled
+      if (error.response?.data?.detail) {
+        toast.error(`Failed to log ${type}. ${error.response.data.detail}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -144,27 +225,57 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   };
 
   const handleSleepSubmit = async () => {
-    const sleepData: SleepSessionCreate = {
-      baby_id: babyId,
-      sleep_type: 'nap', // Default to nap for now
-      location: formData.location || 'crib',
-      sleep_quality: 'good',
-    };
-
     if (formData.sleepType === 'start') {
-      sleepData.sleep_start = getTimestamp();
+      // Start a new sleep timer
+      const sleepData: SleepSessionCreate = {
+        baby_id: babyId,
+        sleep_type: 'nap',
+        location: formData.location || 'crib',
+        sleep_quality: 'good',
+        sleep_start: getTimestamp(),
+        // sleep_end intentionally omitted - marks as "in progress"
+      };
+      await sleepApi.create(sleepData);
+      setActiveSleep(null); // Will be refreshed on next check
+
     } else if (formData.sleepType === 'end') {
-      // Calculate start time based on duration
+      // End active sleep - update existing record
+      if (!activeSleep) {
+        toast.error('No active sleep to end. Use "Log Past Sleep" instead.');
+        throw new Error('No active sleep session');
+      }
+      await sleepApi.update(activeSleep.id, {
+        sleep_end: new Date().toISOString()
+      });
+      setActiveSleep(null);
+
+    } else if (formData.sleepType === 'log') {
+      // Log completed sleep retroactively
       const duration = parseInt(formData.duration) || 0;
+      if (duration <= 0) {
+        toast.error('Please enter how long baby slept');
+        throw new Error('Duration required');
+      }
+
+      // Use custom end time if set, otherwise use now
       const endTime = useCustomTime && customDate && customTime
         ? new Date(`${customDate}T${customTime}`)
         : new Date();
       const startTime = new Date(endTime.getTime() - duration * 60 * 1000);
-      sleepData.sleep_start = startTime.toISOString();
-      sleepData.sleep_end = endTime.toISOString();
-    }
 
-    await sleepApi.create(sleepData);
+      const sleepData: SleepSessionCreate = {
+        baby_id: babyId,
+        sleep_type: 'nap',
+        location: formData.location || 'crib',
+        sleep_quality: 'good',
+        sleep_start: startTime.toISOString(),
+        sleep_end: endTime.toISOString(),
+      };
+      await sleepApi.create(sleepData);
+    } else {
+      toast.error('Please select a sleep action');
+      throw new Error('No sleep action selected');
+    }
   };
 
   const handleGrowthSubmit = async () => {
@@ -463,71 +574,163 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
 
   const renderSleepForm = () => (
     <div className="space-y-4">
-      <div>
-        <Label>Sleep Action</Label>
-        <div className="flex gap-2 mt-2">
-          <Button
-            type="button"
-            variant={formData.sleepType === 'start' ? 'default' : 'outline'}
-            onClick={() => setFormData({...formData, sleepType: 'start'})}
-            className="flex-1"
-          >
-            😴 Sleep Started
-          </Button>
-          <Button
-            type="button"
-            variant={formData.sleepType === 'end' ? 'default' : 'outline'}
-            onClick={() => setFormData({...formData, sleepType: 'end'})}
-            className="flex-1"
-          >
-            😊 Woke Up
-          </Button>
-        </div>
-      </div>
-
-      {formData.sleepType === 'end' && (
-        <div>
-          <Label htmlFor="duration">Sleep Duration (minutes)</Label>
-          <Input
-            id="duration"
-            type="number"
-            placeholder="90"
-            value={formData.duration || ''}
-            onChange={(e) => setFormData({...formData, duration: e.target.value})}
-          />
+      {/* Show active sleep indicator if one exists */}
+      {activeSleep && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-900 font-medium">Sleep in progress</p>
+              <p className="text-blue-700 text-xs mt-0.5">
+                Started at {new Date(activeSleep.sleep_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </p>
+            </div>
+            {elapsedTime && (
+              <div className="text-right">
+                <p className="text-blue-900 font-bold text-lg">{elapsedTime}</p>
+                <p className="text-blue-600 text-xs">elapsed</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      <div>
-        <Label htmlFor="location">Sleep Location (optional)</Label>
-        <Select onValueChange={(value) => setFormData({...formData, location: value})}>
-          <SelectTrigger>
-            <SelectValue placeholder="Where did baby sleep?" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="crib">Crib</SelectItem>
-            <SelectItem value="bassinet">Bassinet</SelectItem>
-            <SelectItem value="bed">Parent's bed</SelectItem>
-            <SelectItem value="stroller">Stroller</SelectItem>
-            <SelectItem value="car">Car seat</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Three clear action buttons */}
+      <div className="grid grid-cols-1 gap-3">
+        <Button
+          type="button"
+          variant={formData.sleepType === 'start' ? 'default' : 'outline'}
+          onClick={() => setFormData({...formData, sleepType: 'start'})}
+          className="h-16 justify-start px-4"
+          disabled={!!activeSleep}
+        >
+          <Moon className="w-5 h-5 mr-3" />
+          <div className="text-left">
+            <div className="font-medium">Fell Asleep</div>
+            <div className="text-xs opacity-70">
+              {activeSleep ? 'Sleep already in progress' : 'Start tracking now'}
+            </div>
+          </div>
+        </Button>
+
+        <Button
+          type="button"
+          variant={formData.sleepType === 'end' ? 'default' : 'outline'}
+          onClick={() => setFormData({...formData, sleepType: 'end'})}
+          className="h-16 justify-start px-4"
+          disabled={!activeSleep}
+        >
+          <Sun className="w-5 h-5 mr-3" />
+          <div className="text-left">
+            <div className="font-medium">Woke Up</div>
+            <div className="text-xs opacity-70">
+              {activeSleep ? `End sleep (${elapsedTime})` : 'No active sleep'}
+            </div>
+          </div>
+        </Button>
+
+        <Button
+          type="button"
+          variant={formData.sleepType === 'log' ? 'default' : 'outline'}
+          onClick={() => setFormData({...formData, sleepType: 'log'})}
+          className="h-16 justify-start px-4"
+        >
+          <Clock className="w-5 h-5 mr-3" />
+          <div className="text-left">
+            <div className="font-medium">Log Past Sleep</div>
+            <div className="text-xs opacity-70">Enter completed nap</div>
+          </div>
+        </Button>
       </div>
 
-      {renderTimePicker()}
+      {/* Duration field for "Log Past Sleep" */}
+      {formData.sleepType === 'log' && (
+        <div className="space-y-3 pt-2">
+          {/* Quick duration presets */}
+          <div>
+            <Label className="text-sm">Quick select</Label>
+            <div className="grid grid-cols-5 gap-2 mt-1">
+              {[30, 45, 60, 90, 120].map((mins) => (
+                <Button
+                  key={mins}
+                  type="button"
+                  variant={formData.duration === mins.toString() ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFormData({...formData, duration: mins.toString()})}
+                  className="text-xs"
+                >
+                  {formatDuration(mins)}
+                </Button>
+              ))}
+            </div>
+          </div>
 
-      <div className="flex gap-2">
-        <Button onClick={() => handleSubmit('sleep')} className="flex-1" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Logging...
-            </>
-          ) : (
-            'Log Sleep'
+          {/* Custom duration input */}
+          <div>
+            <Label htmlFor="duration">Or enter minutes</Label>
+            <Input
+              id="duration"
+              type="number"
+              placeholder="45"
+              value={formData.duration || ''}
+              onChange={(e) => setFormData({...formData, duration: e.target.value})}
+            />
+          </div>
+
+          {/* Duration preview */}
+          {sleepTimePreview && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-3 text-sm">
+              <p className="text-purple-900">
+                <span className="font-medium">{sleepTimePreview.formatted}</span> sleep
+              </p>
+              <p className="text-purple-700 text-xs mt-0.5">
+                {sleepTimePreview.start} → {sleepTimePreview.end}
+              </p>
+            </div>
           )}
-        </Button>
-        <Button variant="outline" onClick={() => setActiveEntry(null)} className="flex-1" disabled={isSubmitting}>
+        </div>
+      )}
+
+      {/* Location picker - shown for start and log */}
+      {(formData.sleepType === 'start' || formData.sleepType === 'log') && (
+        <div>
+          <Label htmlFor="location">Sleep Location (optional)</Label>
+          <Select onValueChange={(value) => setFormData({...formData, location: value})}>
+            <SelectTrigger>
+              <SelectValue placeholder="Where did baby sleep?" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="crib">Crib</SelectItem>
+              <SelectItem value="bassinet">Bassinet</SelectItem>
+              <SelectItem value="parent_bed">Parent's bed</SelectItem>
+              <SelectItem value="stroller">Stroller</SelectItem>
+              <SelectItem value="car_seat">Car seat</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Custom time picker - for "Fell Asleep" (past start) and "Log Past Sleep" (custom end time) */}
+      {(formData.sleepType === 'start' || formData.sleepType === 'log') && renderTimePicker()}
+
+      {/* Submit and Cancel buttons */}
+      <div className="flex gap-2">
+        {formData.sleepType && (
+          <Button onClick={() => handleSubmit('sleep')} className="flex-1" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Logging...
+              </>
+            ) : (
+              <>
+                {formData.sleepType === 'start' && 'Start Sleep Timer'}
+                {formData.sleepType === 'end' && 'End Sleep'}
+                {formData.sleepType === 'log' && 'Log Sleep'}
+              </>
+            )}
+          </Button>
+        )}
+        <Button variant="outline" onClick={() => setActiveEntry(null)} className={formData.sleepType ? 'flex-1' : 'w-full'} disabled={isSubmitting}>
           Cancel
         </Button>
       </div>
