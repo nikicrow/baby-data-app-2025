@@ -1,10 +1,11 @@
-import uuid
+import enum
 from datetime import datetime
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, Enum
+
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.database import Base
-import enum
+
+from app.models.base import BabyEventModel
 
 
 class UrineVolume(enum.Enum):
@@ -36,27 +37,27 @@ class DiaperType(enum.Enum):
     TRAINING = "training"
 
 
-class DiaperEvent(Base):
+class DiaperEvent(BabyEventModel):
+    """Diaper change event model tracking urine, stool, and diaper type."""
+
     __tablename__ = "diaper_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     baby_id = Column(UUID(as_uuid=True), ForeignKey("baby_profiles.id"), nullable=False)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
+
     # Urine tracking
     has_urine = Column(Boolean, default=False)
     urine_volume = Column(Enum(UrineVolume), default=UrineVolume.NONE)
-    
+
     # Stool tracking
     has_stool = Column(Boolean, default=False)
     stool_consistency = Column(Enum(StoolConsistency), nullable=True)
     stool_color = Column(Enum(StoolColor), nullable=True)
-    
+
     # Diaper info
     diaper_type = Column(Enum(DiaperType), default=DiaperType.DISPOSABLE)
-    
+
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     baby = relationship("BabyProfile", back_populates="diaper_events")

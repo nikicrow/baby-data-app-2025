@@ -128,9 +128,11 @@ class TestDiaperEventResponse:
             id=uuid4(),
             baby_id=uuid4(),
             created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
             timestamp=datetime(2024, 1, 1, 10, 0, 0),
         )
 
         assert schema.id is not None
         assert schema.baby_id is not None
         assert schema.created_at is not None
+        assert schema.updated_at is not None

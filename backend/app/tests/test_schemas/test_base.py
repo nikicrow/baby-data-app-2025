@@ -123,16 +123,19 @@ class TestBabyEventResponseBase:
         baby_id = uuid4()
         event_id = uuid4()
         created = datetime.utcnow()
+        updated = datetime.utcnow()
 
         schema = BabyEventResponseBase(
             id=event_id,
             baby_id=baby_id,
             created_at=created,
+            updated_at=updated,
         )
 
         assert schema.id == event_id
         assert schema.baby_id == baby_id
         assert schema.created_at == created
+        assert schema.updated_at == updated
 
     def test_from_attributes_config(self):
         """Test from_attributes is enabled for ORM mode."""

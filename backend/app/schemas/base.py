@@ -58,7 +58,7 @@ class TimedSessionMixin(BaseModel):
 class BabyEventResponseBase(BaseModel):
     """Base response class for all baby-related events.
 
-    Provides common fields: id, baby_id, created_at, and ORM mode config.
+    Provides common fields: id, baby_id, created_at, updated_at, and ORM mode config.
     Used by: DiaperEventResponse, FeedingSessionResponse, SleepSessionResponse,
              GrowthMeasurementResponse, HealthEventResponse
     """
@@ -67,3 +67,4 @@ class BabyEventResponseBase(BaseModel):
     id: UUID
     baby_id: UUID
     created_at: datetime
+    updated_at: datetime
