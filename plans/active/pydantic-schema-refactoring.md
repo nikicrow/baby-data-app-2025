@@ -87,9 +87,9 @@ Created `backend/app/tests/test_schemas/`:
 
 ---
 
-### Phase 2: Model Base Class + `updated_at`
+### Phase 2: Model Base Class + `updated_at` ✅ COMPLETED
 
-#### Step 2.1: Create `backend/app/models/base.py`
+#### Step 2.1: Create `backend/app/models/base.py` ✅
 
 New file with abstract base classes:
 
@@ -120,7 +120,15 @@ class BabyEventModel(BaseModel):
     #   baby = relationship("BabyProfile", back_populates="<event_type>")
 ```
 
-#### Step 2.2: Refactor Each Model
+#### Step 2.2: Refactor Each Model ✅
+
+All 6 models refactored:
+- **baby.py** - Inherits `BaseModel`, removed duplicated `id`, `created_at`, `updated_at` columns
+- **diaper.py** - Inherits `BabyEventModel`, removed duplicated `id`, `created_at`, gains `updated_at`
+- **feeding.py** - Inherits `BabyEventModel`, removed duplicated `id`, `created_at`, gains `updated_at`
+- **sleep.py** - Inherits `BabyEventModel`, removed duplicated `id`, `created_at`, gains `updated_at`
+- **growth.py** - Inherits `BabyEventModel`, removed duplicated `id`, `created_at`, gains `updated_at`
+- **health.py** - Inherits `BabyEventModel`, removed duplicated `id`, `created_at`, gains `updated_at`
 
 **baby.py:**
 - Inherit `BabyProfile` from `BaseModel`
@@ -152,29 +160,30 @@ class BabyEventModel(BaseModel):
 - Remove duplicated `id`, `created_at` columns
 - Gains `updated_at` automatically
 
-#### Step 2.3: Update Schema Response Classes
+#### Step 2.3: Update Schema Response Classes ✅
 
-Update `BabyEventResponseBase` in `schemas/base.py` to include `updated_at`:
+Updated `BabyEventResponseBase` in `schemas/base.py` to include `updated_at`.
 
-```python
-class BabyEventResponseBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    baby_id: UUID
-    created_at: datetime
-    updated_at: datetime  # NEW
-```
+#### Step 2.4: Create Migration for `updated_at` ✅
 
-#### Step 2.4: Create Migration for `updated_at`
-
-Create migration to add `updated_at` column to all 5 event tables:
+Created migration `c5eb3f5c55fe_add_updated_at_to_event_tables.py` to add `updated_at` column to all 5 event tables:
 - `diaper_events`
 - `feeding_sessions`
 - `sleep_sessions`
 - `growth_measurements`
 - `health_events`
 
-Default value: `created_at` (backfill existing rows)
+Backfills existing rows with `created_at` value. **Migration applied successfully.**
+
+#### Step 2.5: Update Tests ✅
+
+Updated test files to include `updated_at` in response schema tests:
+- `test_base.py` - Updated `TestBabyEventResponseBase`
+- `test_diaper.py` - Updated `TestDiaperEventResponse`
+- `test_sleep.py` - Updated `TestSleepSessionResponse`
+- `test_feeding.py` - Updated `TestFeedingSessionResponse`
+
+**Results:** 65 tests passed
 
 ---
 
