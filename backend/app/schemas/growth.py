@@ -1,18 +1,27 @@
 from datetime import datetime, date
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.models.growth import MeasurementContext
+from app.schemas.base import NotesMixin, BabyEventResponseBase
 
 
-class GrowthMeasurementBase(BaseModel):
+class GrowthMeasurementBase(NotesMixin):
+    """Base schema for growth measurements with notes validation."""
     measurement_date: date = Field(default_factory=date.today)
     weight_kg: Optional[float] = Field(None, gt=0, description="Weight in kg")
-    length_cm: Optional[float] = Field(None, gt=0, description="Length in cm") 
+    length_cm: Optional[float] = Field(None, gt=0, description="Length in cm")
     head_circumference_cm: Optional[float] = Field(None, gt=0, description="Head circumference in cm")
     measurement_context: MeasurementContext = MeasurementContext.HOME
     measured_by: Optional[str] = Field(None, max_length=100)
-    notes: Optional[str] = None
+
+    @field_validator('measurement_date')
+    @classmethod
+    def validate_measurement_date_not_future(cls, v: date) -> date:
+        """Reject measurement_date in the future."""
+        if v > date.today():
+            raise ValueError("measurement_date cannot be in the future")
+        return v
 
 
 class GrowthMeasurementCreate(GrowthMeasurementBase):
@@ -26,14 +35,9 @@ class GrowthMeasurementUpdate(BaseModel):
     head_circumference_cm: Optional[float] = Field(None, gt=0)
     measurement_context: Optional[MeasurementContext] = None
     measured_by: Optional[str] = Field(None, max_length=100)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=2000)
 
 
-class GrowthMeasurementResponse(GrowthMeasurementBase):
-    id: UUID
-    baby_id: UUID
-    percentiles: Optional[Dict[str, Any]]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+class GrowthMeasurementResponse(GrowthMeasurementBase, BabyEventResponseBase):
+    """Response schema for growth measurements."""
+    percentiles: Optional[Dict[str, Any]] = None

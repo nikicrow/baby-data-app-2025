@@ -42,8 +42,8 @@ class SleepSession(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     baby_id = Column(UUID(as_uuid=True), ForeignKey("baby_profiles.id"), nullable=False)
-    sleep_start = Column(DateTime, nullable=False, default=datetime.utcnow)
-    sleep_end = Column(DateTime, nullable=True)
+    start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
     sleep_type = Column(Enum(SleepType), nullable=False, default=SleepType.NAP)
     location = Column(Enum(SleepLocation), default=SleepLocation.CRIB)
     sleep_quality = Column(Enum(SleepQuality), default=SleepQuality.GOOD)
@@ -59,4 +59,4 @@ class SleepSession(Base):
     baby = relationship("BabyProfile", back_populates="sleep_sessions")
 
     def __repr__(self):
-        return f"<SleepSession(baby_id='{self.baby_id}', type='{self.sleep_type}', start='{self.sleep_start}')>"
+        return f"<SleepSession(baby_id='{self.baby_id}', type='{self.sleep_type}', start='{self.start_time}')>"

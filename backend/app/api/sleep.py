@@ -37,7 +37,7 @@ def list_sleep_sessions(
         query = query.filter(SleepSession.baby_id == baby_id)
 
     # Order by most recent first
-    sleeps = query.order_by(SleepSession.sleep_start.desc()).offset(skip).limit(limit).all()
+    sleeps = query.order_by(SleepSession.start_time.desc()).offset(skip).limit(limit).all()
     return sleeps
 
 
