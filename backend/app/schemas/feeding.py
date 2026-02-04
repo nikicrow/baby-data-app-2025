@@ -3,11 +3,36 @@ from typing import Optional, List
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator, computed_field
 from app.models.feeding import FeedingType, BreastSide, Appetite
-from app.schemas.base import NotesMixin, TimedSessionMixin, BabyEventResponseBase
+from app.schemas.base import NotesMixin, TimedSessionFieldsMixin, TimedSessionMixin, BabyEventResponseBase
+
+
+class FeedingSessionFields(TimedSessionFieldsMixin, NotesMixin):
+    """Fields-only base for feeding sessions (no validators).
+
+    Used by Response schemas that shouldn't run input validation.
+    """
+    feeding_type: FeedingType
+
+    # Breastfeeding fields
+    breast_started: Optional[BreastSide] = None
+    left_breast_duration: Optional[int] = Field(None, ge=0, description="Duration in minutes")
+    right_breast_duration: Optional[int] = Field(None, ge=0, description="Duration in minutes")
+
+    # Bottle feeding fields
+    volume_offered_ml: Optional[int] = Field(None, ge=0)
+    volume_consumed_ml: Optional[int] = Field(None, ge=0)
+    formula_type: Optional[str] = Field(None, max_length=100)
+
+    # Solid food fields
+    food_items: Optional[List[str]] = None
+    appetite: Optional[Appetite] = None
 
 
 class FeedingSessionBase(TimedSessionMixin, NotesMixin):
-    """Base schema for feeding sessions with timed session and notes validation."""
+    """Base schema for feeding sessions with full validation.
+
+    Used by Create schemas that need input validation.
+    """
     feeding_type: FeedingType
 
     # Breastfeeding fields
@@ -66,8 +91,8 @@ class FeedingSessionUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
 
 
-class FeedingSessionResponse(FeedingSessionBase, BabyEventResponseBase):
-    """Response schema for feeding sessions."""
+class FeedingSessionResponse(FeedingSessionFields, BabyEventResponseBase):
+    """Response schema for feeding sessions (no input validators)."""
 
     @computed_field
     @property

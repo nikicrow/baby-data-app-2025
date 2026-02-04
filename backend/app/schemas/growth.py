@@ -6,8 +6,24 @@ from app.models.growth import MeasurementContext
 from app.schemas.base import NotesMixin, BabyEventResponseBase
 
 
+class GrowthMeasurementFields(NotesMixin):
+    """Fields-only base for growth measurements (no validators).
+
+    Used by Response schemas that shouldn't run input validation.
+    """
+    measurement_date: date = Field(default_factory=date.today)
+    weight_kg: Optional[float] = Field(None, gt=0, description="Weight in kg")
+    length_cm: Optional[float] = Field(None, gt=0, description="Length in cm")
+    head_circumference_cm: Optional[float] = Field(None, gt=0, description="Head circumference in cm")
+    measurement_context: MeasurementContext = MeasurementContext.HOME
+    measured_by: Optional[str] = Field(None, max_length=100)
+
+
 class GrowthMeasurementBase(NotesMixin):
-    """Base schema for growth measurements with notes validation."""
+    """Base schema for growth measurements with full validation.
+
+    Used by Create schemas that need input validation.
+    """
     measurement_date: date = Field(default_factory=date.today)
     weight_kg: Optional[float] = Field(None, gt=0, description="Weight in kg")
     length_cm: Optional[float] = Field(None, gt=0, description="Length in cm")
@@ -38,6 +54,6 @@ class GrowthMeasurementUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
 
 
-class GrowthMeasurementResponse(GrowthMeasurementBase, BabyEventResponseBase):
-    """Response schema for growth measurements."""
+class GrowthMeasurementResponse(GrowthMeasurementFields, BabyEventResponseBase):
+    """Response schema for growth measurements (no input validators)."""
     percentiles: Optional[Dict[str, Any]] = None

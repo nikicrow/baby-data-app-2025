@@ -3,11 +3,26 @@ from typing import Optional, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, Field, computed_field
 from app.models.sleep import SleepType, SleepLocation, SleepQuality, WakeReason
-from app.schemas.base import NotesMixin, TimedSessionMixin, BabyEventResponseBase
+from app.schemas.base import NotesMixin, TimedSessionFieldsMixin, TimedSessionMixin, BabyEventResponseBase
+
+
+class SleepSessionFields(TimedSessionFieldsMixin, NotesMixin):
+    """Fields-only base for sleep sessions (no validators).
+
+    Used by Response schemas that shouldn't run input validation.
+    """
+    sleep_type: SleepType = SleepType.NAP
+    location: SleepLocation = SleepLocation.CRIB
+    sleep_quality: SleepQuality = SleepQuality.GOOD
+    sleep_environment: Optional[Dict[str, Any]] = None
+    wake_reason: Optional[WakeReason] = None
 
 
 class SleepSessionBase(TimedSessionMixin, NotesMixin):
-    """Base schema for sleep sessions with timed session and notes validation."""
+    """Base schema for sleep sessions with full validation.
+
+    Used by Create schemas that need input validation.
+    """
     sleep_type: SleepType = SleepType.NAP
     location: SleepLocation = SleepLocation.CRIB
     sleep_quality: SleepQuality = SleepQuality.GOOD
@@ -30,8 +45,8 @@ class SleepSessionUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
 
 
-class SleepSessionResponse(SleepSessionBase, BabyEventResponseBase):
-    """Response schema for sleep sessions."""
+class SleepSessionResponse(SleepSessionFields, BabyEventResponseBase):
+    """Response schema for sleep sessions (no input validators)."""
 
     @computed_field
     @property

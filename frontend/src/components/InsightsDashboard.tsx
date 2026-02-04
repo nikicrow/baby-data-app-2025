@@ -69,7 +69,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   // Calculate real analytics from data
   const todayFeedings = feedings.filter(f => isToday(parseISO(f.start_time)));
-  const todaySleeps = sleeps.filter(s => isToday(parseISO(s.sleep_start)));
+  const todaySleeps = sleeps.filter(s => isToday(parseISO(s.start_time)));
   const todayDiapers = diapers.filter(d => isToday(parseISO(d.timestamp)));
 
   const totalSleepToday = todaySleeps.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
@@ -115,7 +115,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
   const sleepPatternData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const daySleeps = sleeps.filter((s: SleepSession) => {
-      const sleepDate = parseISO(s.sleep_start);
+      const sleepDate = parseISO(s.start_time);
       return startOfDay(sleepDate).getTime() === startOfDay(date).getTime();
     });
     const totalDuration = daySleeps.reduce((sum: number, s: SleepSession) => sum + (s.duration_minutes || 0), 0);
@@ -166,12 +166,12 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   // Calculate wake windows (time between sleep sessions)
   const sortedSleeps = [...sleeps].sort((a, b) =>
-    new Date(a.sleep_start).getTime() - new Date(b.sleep_start).getTime()
+    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   );
   const wakeWindows = sortedSleeps.slice(1).map((sleep, i) => {
     const prevSleep = sortedSleeps[i];
-    const prevEnd = new Date(prevSleep.sleep_start).getTime() + (prevSleep.duration_minutes || 0) * 60000;
-    const currentStart = new Date(sleep.sleep_start).getTime();
+    const prevEnd = new Date(prevSleep.start_time).getTime() + (prevSleep.duration_minutes || 0) * 60000;
+    const currentStart = new Date(sleep.start_time).getTime();
     return (currentStart - prevEnd) / 60000; // minutes
   }).filter(w => w > 0 && w < 600); // Filter out unrealistic values (< 10 hours)
 

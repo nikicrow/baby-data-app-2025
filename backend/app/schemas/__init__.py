@@ -2,6 +2,7 @@
 from .base import (
     NOTES_MAX_LENGTH,
     NotesMixin,
+    TimedSessionFieldsMixin,
     TimedSessionMixin,
     BabyEventResponseBase,
 )
@@ -16,6 +17,7 @@ __all__ = [
     # Base classes and constants
     "NOTES_MAX_LENGTH",
     "NotesMixin",
+    "TimedSessionFieldsMixin",
     "TimedSessionMixin",
     "BabyEventResponseBase",
     # Baby

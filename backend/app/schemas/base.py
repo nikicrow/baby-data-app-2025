@@ -1,6 +1,6 @@
 """Base schema classes and mixins for DRY validation patterns."""
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -8,6 +8,23 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 
 # Constants
 NOTES_MAX_LENGTH = 2000
+
+
+def _get_utc_now_naive() -> datetime:
+    """Get current UTC time as a naive datetime for comparison."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Convert a datetime to naive UTC for comparison.
+
+    If the datetime is timezone-aware, convert to UTC and remove tzinfo.
+    If already naive, assume it's UTC and return as-is.
+    """
+    if dt.tzinfo is not None:
+        # Convert to UTC, then strip timezone info
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 class NotesMixin(BaseModel):
@@ -21,7 +38,8 @@ class TimestampValidatorMixin(BaseModel):
     @staticmethod
     def validate_not_future_datetime(v: datetime, field_name: str) -> datetime:
         """Validate that a datetime is not in the future."""
-        if v > datetime.utcnow():
+        v_naive = _to_naive_utc(v)
+        if v_naive > _get_utc_now_naive():
             raise ValueError(f"{field_name} cannot be in the future")
         return v
 
@@ -33,16 +51,27 @@ class TimestampValidatorMixin(BaseModel):
         return v
 
 
-class TimedSessionMixin(BaseModel):
-    """Mixin for schemas with start_time/end_time fields and validation."""
-    start_time: datetime = Field(default_factory=datetime.utcnow)
+class TimedSessionFieldsMixin(BaseModel):
+    """Mixin with just start_time/end_time fields (no validators).
+
+    Use this for Response schemas that shouldn't run input validators.
+    """
+    start_time: datetime = Field(default_factory=_get_utc_now_naive)
     end_time: Optional[datetime] = None
+
+
+class TimedSessionMixin(TimedSessionFieldsMixin):
+    """Mixin for input schemas with start_time/end_time fields AND validation.
+
+    Use this for Create/Update schemas that need input validation.
+    """
 
     @field_validator('start_time')
     @classmethod
     def validate_start_time_not_future(cls, v: datetime) -> datetime:
         """Reject start_time in the future."""
-        if v > datetime.utcnow():
+        v_naive = _to_naive_utc(v)
+        if v_naive > _get_utc_now_naive():
             raise ValueError("start_time cannot be in the future")
         return v
 
