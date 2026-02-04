@@ -1,12 +1,22 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.models.health import HealthEventType
+from app.schemas.base import (
+    NotesMixin,
+    BabyEventResponseBase,
+    _get_utc_now_naive,
+    _to_naive_utc,
+)
 
 
-class HealthEventBase(BaseModel):
-    event_date: datetime = Field(default_factory=datetime.utcnow)
+class HealthEventFields(NotesMixin):
+    """Fields-only base for health events (no validators).
+
+    Used by Response schemas that shouldn't run input validation.
+    """
+    event_date: datetime = Field(default_factory=_get_utc_now_naive)
     event_type: HealthEventType
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
@@ -16,8 +26,34 @@ class HealthEventBase(BaseModel):
     healthcare_provider: Optional[str] = Field(None, max_length=200)
     follow_up_required: bool = False
     follow_up_date: Optional[datetime] = None
-    attachments: Optional[List[str]] = None  # File paths/URLs
-    notes: Optional[str] = None
+    attachments: Optional[List[str]] = None
+
+
+class HealthEventBase(NotesMixin):
+    """Base schema for health events with full validation.
+
+    Used by Create schemas that need input validation.
+    """
+    event_date: datetime = Field(default_factory=_get_utc_now_naive)
+    event_type: HealthEventType
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    temperature_celsius: Optional[float] = Field(None, ge=30, le=45, description="Temperature in Celsius")
+    symptoms: Optional[List[str]] = None
+    treatment: Optional[str] = None
+    healthcare_provider: Optional[str] = Field(None, max_length=200)
+    follow_up_required: bool = False
+    follow_up_date: Optional[datetime] = None
+    attachments: Optional[List[str]] = None
+
+    @field_validator('event_date')
+    @classmethod
+    def validate_event_date_not_future(cls, v: datetime) -> datetime:
+        """Reject event_date in the future."""
+        v_naive = _to_naive_utc(v)
+        if v_naive > _get_utc_now_naive():
+            raise ValueError("event_date cannot be in the future")
+        return v
 
 
 class HealthEventCreate(HealthEventBase):
@@ -36,13 +72,9 @@ class HealthEventUpdate(BaseModel):
     follow_up_required: Optional[bool] = None
     follow_up_date: Optional[datetime] = None
     attachments: Optional[List[str]] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=2000)
 
 
-class HealthEventResponse(HealthEventBase):
-    id: UUID
-    baby_id: UUID
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+class HealthEventResponse(HealthEventFields, BabyEventResponseBase):
+    """Response schema for health events (no input validators)."""
+    pass

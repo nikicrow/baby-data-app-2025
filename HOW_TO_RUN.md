@@ -56,6 +56,8 @@ cd c:\Users\nikil\baby-data-app-2025\backend
 
 # 2. Activate the Python virtual environment
 .venv\Scripts\activate
+# Altenatively we can use uv
+uv sync
 
 # 3. Start the backend server
 py -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

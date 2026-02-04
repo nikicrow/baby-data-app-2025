@@ -1,10 +1,11 @@
-import uuid
+import enum
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Enum, JSON
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.database import Base
-import enum
+
+from app.models.base import BabyEventModel
 
 
 class SleepType(enum.Enum):
@@ -37,26 +38,26 @@ class WakeReason(enum.Enum):
     OTHER = "other"
 
 
-class SleepSession(Base):
+class SleepSession(BabyEventModel):
+    """Sleep session model tracking naps and nighttime sleep."""
+
     __tablename__ = "sleep_sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     baby_id = Column(UUID(as_uuid=True), ForeignKey("baby_profiles.id"), nullable=False)
-    sleep_start = Column(DateTime, nullable=False, default=datetime.utcnow)
-    sleep_end = Column(DateTime, nullable=True)
+    start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
     sleep_type = Column(Enum(SleepType), nullable=False, default=SleepType.NAP)
     location = Column(Enum(SleepLocation), default=SleepLocation.CRIB)
     sleep_quality = Column(Enum(SleepQuality), default=SleepQuality.GOOD)
-    
+
     # Environment tracking (stored as JSON for flexibility)
     sleep_environment = Column(JSON, nullable=True)  # temperature, noise_level, lighting, etc.
-    
+
     wake_reason = Column(Enum(WakeReason), nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     baby = relationship("BabyProfile", back_populates="sleep_sessions")
 
     def __repr__(self):
-        return f"<SleepSession(baby_id='{self.baby_id}', type='{self.sleep_type}', start='{self.sleep_start}')>"
+        return f"<SleepSession(baby_id='{self.baby_id}', type='{self.sleep_type}', start='{self.start_time}')>"

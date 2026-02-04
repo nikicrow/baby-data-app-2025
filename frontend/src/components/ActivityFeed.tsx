@@ -137,8 +137,8 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   };
 
   const transformSleep = (sleep: SleepSession): Activity => {
-    const timestamp = parseISO(sleep.sleep_start);
-    const isOngoing = !sleep.sleep_end;
+    const timestamp = parseISO(sleep.start_time);
+    const isOngoing = !sleep.end_time;
 
     let details: string;
     if (isOngoing) {
@@ -266,8 +266,8 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
         }
         case 'sleep': {
           const sleep = activity.originalData as SleepSession;
-          const sleepStartDate = parseISO(sleep.sleep_start);
-          const sleepEndDate = sleep.sleep_end ? parseISO(sleep.sleep_end) : null;
+          const sleepStartDate = parseISO(sleep.start_time);
+          const sleepEndDate = sleep.end_time ? parseISO(sleep.end_time) : null;
           const durationMins = sleep.duration_minutes || 0;
           setEditFormData({
             sleepType: sleep.sleep_type,
@@ -359,8 +359,8 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
             location: editFormData.location,
             sleep_quality: editFormData.sleepQuality,
             notes: editFormData.notes || undefined,
-            sleep_start: sleepStart,
-            sleep_end: sleepEnd,
+            start_time: sleepStart,
+            end_time: sleepEnd,
           };
           await sleepApi.update(activityToEdit.id, updateData);
           break;

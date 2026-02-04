@@ -106,8 +106,8 @@ export interface FeedingSessionUpdate {
 export interface SleepSession {
   id: string;
   baby_id: string;
-  sleep_start: string;
-  sleep_end?: string;
+  start_time: string;
+  end_time?: string;
   sleep_type: SleepType;
   location: SleepLocation;
   sleep_quality: SleepQuality;
@@ -115,13 +115,14 @@ export interface SleepSession {
   wake_reason?: WakeReason;
   notes?: string;
   created_at: string;
+  updated_at: string;
   duration_minutes?: number;
 }
 
 export interface SleepSessionCreate {
   baby_id: string;
-  sleep_start?: string;
-  sleep_end?: string;
+  start_time?: string;
+  end_time?: string;
   sleep_type?: SleepType;
   location?: SleepLocation;
   sleep_quality?: SleepQuality;
@@ -131,8 +132,8 @@ export interface SleepSessionCreate {
 }
 
 export interface SleepSessionUpdate {
-  sleep_start?: string;
-  sleep_end?: string;
+  start_time?: string;
+  end_time?: string;
   sleep_type?: SleepType;
   location?: SleepLocation;
   sleep_quality?: SleepQuality;

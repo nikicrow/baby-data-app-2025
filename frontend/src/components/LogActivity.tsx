@@ -46,7 +46,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     const checkActiveSleep = async () => {
       try {
         const sessions = await sleepApi.getAll({ baby_id: babyId });
-        const active = sessions.find(s => s.sleep_start && !s.sleep_end);
+        const active = sessions.find(s => s.start_time && !s.end_time);
         setActiveSleep(active || null);
       } catch (error) {
         console.error('Failed to check for active sleep:', error);
@@ -63,7 +63,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     }
 
     const updateElapsed = () => {
-      const startTime = new Date(activeSleep.sleep_start).getTime();
+      const startTime = new Date(activeSleep.start_time).getTime();
       const now = Date.now();
       const elapsedMins = Math.floor((now - startTime) / (1000 * 60));
       setElapsedTime(formatDuration(elapsedMins));
@@ -100,7 +100,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   const refreshActiveSleep = async () => {
     try {
       const sessions = await sleepApi.getAll({ baby_id: babyId });
-      const active = sessions.find(s => s.sleep_start && !s.sleep_end);
+      const active = sessions.find(s => s.start_time && !s.end_time);
       setActiveSleep(active || null);
     } catch (error) {
       console.error('Failed to refresh active sleep:', error);
@@ -232,8 +232,8 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
         sleep_type: 'nap',
         location: formData.location || 'crib',
         sleep_quality: 'good',
-        sleep_start: getTimestamp(),
-        // sleep_end intentionally omitted - marks as "in progress"
+        start_time: getTimestamp(),
+        // end_time intentionally omitted - marks as "in progress"
       };
       await sleepApi.create(sleepData);
       setActiveSleep(null); // Will be refreshed on next check
@@ -245,7 +245,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
         throw new Error('No active sleep session');
       }
       await sleepApi.update(activeSleep.id, {
-        sleep_end: new Date().toISOString()
+        end_time: new Date().toISOString()
       });
       setActiveSleep(null);
 
@@ -268,8 +268,8 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
         sleep_type: 'nap',
         location: formData.location || 'crib',
         sleep_quality: 'good',
-        sleep_start: startTime.toISOString(),
-        sleep_end: endTime.toISOString(),
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
       };
       await sleepApi.create(sleepData);
     } else {
@@ -581,7 +581,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
             <div>
               <p className="text-blue-900 font-medium">Sleep in progress</p>
               <p className="text-blue-700 text-xs mt-0.5">
-                Started at {new Date(activeSleep.sleep_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                Started at {new Date(activeSleep.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </p>
             </div>
             {elapsedTime && (

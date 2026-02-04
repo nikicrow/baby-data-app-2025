@@ -1,15 +1,15 @@
-import uuid
-from datetime import date, datetime
-from sqlalchemy import Boolean, Column, DateTime, Date, Float, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import date
+from sqlalchemy import Boolean, Column, Date, Float, String, Text
 from sqlalchemy.orm import relationship
-from app.core.database import Base
+
+from app.models.base import BaseModel
 
 
-class BabyProfile(Base):
+class BabyProfile(BaseModel):
+    """Baby profile model with personal information and relationships to events."""
+
     __tablename__ = "baby_profiles"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     date_of_birth = Column(Date, nullable=False)
     birth_weight = Column(Float, nullable=True)  # in kg
@@ -18,8 +18,6 @@ class BabyProfile(Base):
     gender = Column(String(20), nullable=True)  # male, female, other
     timezone = Column(String(50), default="Australia/Sydney")
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
     # Relationships

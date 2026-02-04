@@ -1,10 +1,11 @@
-import uuid
-from datetime import datetime, date
-from sqlalchemy import Column, DateTime, Date, ForeignKey, Float, String, Text, Enum, JSON
+import enum
+from datetime import date
+
+from sqlalchemy import Column, Date, Enum, Float, ForeignKey, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.database import Base
-import enum
+
+from app.models.base import BabyEventModel
 
 
 class MeasurementContext(enum.Enum):
@@ -14,27 +15,27 @@ class MeasurementContext(enum.Enum):
     CLINIC = "clinic"
 
 
-class GrowthMeasurement(Base):
+class GrowthMeasurement(BabyEventModel):
+    """Growth measurement model tracking weight, length, and head circumference."""
+
     __tablename__ = "growth_measurements"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     baby_id = Column(UUID(as_uuid=True), ForeignKey("baby_profiles.id"), nullable=False)
     measurement_date = Column(Date, nullable=False, default=date.today)
-    
+
     # Physical measurements
     weight_kg = Column(Float, nullable=True)
     length_cm = Column(Float, nullable=True)
     head_circumference_cm = Column(Float, nullable=True)
-    
+
     # Context
     measurement_context = Column(Enum(MeasurementContext), default=MeasurementContext.HOME)
     measured_by = Column(String(100), nullable=True)  # Doctor name, parent, etc.
-    
+
     # Calculated percentiles (stored as JSON for flexibility)
     percentiles = Column(JSON, nullable=True)  # {"weight": 45, "length": 50, "head": 55}
-    
+
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     baby = relationship("BabyProfile", back_populates="growth_measurements")

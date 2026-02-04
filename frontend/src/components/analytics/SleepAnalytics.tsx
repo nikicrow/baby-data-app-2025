@@ -58,7 +58,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   const sleepTrendsData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const daySleeps = sleeps.filter((s: SleepSession) => {
-      const sleepDate = parseISO(s.sleep_start);
+      const sleepDate = parseISO(s.start_time);
       return startOfDay(sleepDate).getTime() === startOfDay(date).getTime();
     });
 
@@ -71,7 +71,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
     // Count wake-ups (sleep sessions that start between 10pm and 6am that aren't the main night sleep)
     const wakeUps = daySleeps.filter((s: SleepSession) => {
-      const hour = getHours(parseISO(s.sleep_start));
+      const hour = getHours(parseISO(s.start_time));
       return (hour >= 22 || hour < 6) && (s.duration_minutes || 0) < 120;
     }).length;
 
@@ -87,7 +87,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   // Sleep patterns by time of day
   const getSleepsByTimeOfDay = (hour: number, label: string, type: string) => {
     const relevantSleeps = sleeps.filter((s: SleepSession) => {
-      const sleepHour = getHours(parseISO(s.sleep_start));
+      const sleepHour = getHours(parseISO(s.start_time));
       return Math.abs(sleepHour - hour) <= 2;
     });
 
@@ -118,7 +118,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
   // Wake window analysis
   const sortedSleeps = [...sleeps].sort((a, b) =>
-    new Date(a.sleep_start).getTime() - new Date(b.sleep_start).getTime()
+    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   );
 
   const wakeWindows: { timeOfDay: string; windows: number[] }[] = [
@@ -130,12 +130,12 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
   sortedSleeps.slice(1).forEach((sleep, i) => {
     const prevSleep = sortedSleeps[i];
-    const prevEnd = new Date(prevSleep.sleep_start).getTime() + (prevSleep.duration_minutes || 0) * 60000;
-    const currentStart = new Date(sleep.sleep_start).getTime();
+    const prevEnd = new Date(prevSleep.start_time).getTime() + (prevSleep.duration_minutes || 0) * 60000;
+    const currentStart = new Date(sleep.start_time).getTime();
     const windowMinutes = (currentStart - prevEnd) / 60000;
 
     if (windowMinutes > 0 && windowMinutes < 600) { // Less than 10 hours
-      const hour = getHours(parseISO(sleep.sleep_start));
+      const hour = getHours(parseISO(sleep.start_time));
       if (hour >= 6 && hour < 9) wakeWindows[0].windows.push(windowMinutes);
       else if (hour >= 9 && hour < 13) wakeWindows[1].windows.push(windowMinutes);
       else if (hour >= 13 && hour < 16) wakeWindows[2].windows.push(windowMinutes);
@@ -198,7 +198,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
     const weekEnd = subDays(new Date(), (5 - i) * 7);
 
     const weekSleeps = sleeps.filter((s: SleepSession) => {
-      const sleepDate = parseISO(s.sleep_start);
+      const sleepDate = parseISO(s.start_time);
       return sleepDate >= weekStart && sleepDate < weekEnd;
     });
 
@@ -214,7 +214,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
     // Count wake-ups for the week
     const wakeUps = weekSleeps.filter((s: SleepSession) => {
-      const hour = getHours(parseISO(s.sleep_start));
+      const hour = getHours(parseISO(s.start_time));
       return (hour >= 22 || hour < 6) && (s.duration_minutes || 0) < 120;
     }).length / 7;
 
@@ -228,7 +228,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
   // Calculate key metrics
   const last7DaysSleeps = sleeps.filter((s: SleepSession) => {
-    const sleepDate = parseISO(s.sleep_start);
+    const sleepDate = parseISO(s.start_time);
     return sleepDate >= subDays(new Date(), 7);
   });
 
@@ -242,11 +242,11 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
   // Week over week comparison
   const thisWeekSleeps = sleeps.filter((s: SleepSession) => {
-    const sleepDate = parseISO(s.sleep_start);
+    const sleepDate = parseISO(s.start_time);
     return sleepDate >= subDays(new Date(), 7);
   });
   const lastWeekSleeps = sleeps.filter((s: SleepSession) => {
-    const sleepDate = parseISO(s.sleep_start);
+    const sleepDate = parseISO(s.start_time);
     return sleepDate >= subDays(new Date(), 14) && sleepDate < subDays(new Date(), 7);
   });
 
@@ -259,11 +259,11 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   const nightSleepChange = (thisWeekNightSleep - lastWeekNightSleep) * 60; // in minutes
 
   const thisWeekWakeUps = thisWeekSleeps.filter((s: SleepSession) => {
-    const hour = getHours(parseISO(s.sleep_start));
+    const hour = getHours(parseISO(s.start_time));
     return (hour >= 22 || hour < 6) && (s.duration_minutes || 0) < 120;
   }).length / 7;
   const lastWeekWakeUps = lastWeekSleeps.filter((s: SleepSession) => {
-    const hour = getHours(parseISO(s.sleep_start));
+    const hour = getHours(parseISO(s.start_time));
     return (hour >= 22 || hour < 6) && (s.duration_minutes || 0) < 120;
   }).length / 7;
   const wakeUpsChange = lastWeekWakeUps - thisWeekWakeUps;

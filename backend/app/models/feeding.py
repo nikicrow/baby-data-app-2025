@@ -1,10 +1,11 @@
-import uuid
+import enum
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, Enum, JSON
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.database import Base
-import enum
+
+from app.models.base import BabyEventModel
 
 
 class FeedingType(enum.Enum):
@@ -25,10 +26,11 @@ class Appetite(enum.Enum):
     EXCELLENT = "excellent"
 
 
-class FeedingSession(Base):
+class FeedingSession(BabyEventModel):
+    """Feeding session model supporting breast, bottle, and solid feeding."""
+
     __tablename__ = "feeding_sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     baby_id = Column(UUID(as_uuid=True), ForeignKey("baby_profiles.id"), nullable=False)
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=True)
@@ -49,7 +51,6 @@ class FeedingSession(Base):
     appetite = Column(Enum(Appetite), nullable=True)
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     baby = relationship("BabyProfile", back_populates="feeding_sessions")

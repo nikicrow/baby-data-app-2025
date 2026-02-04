@@ -1,4 +1,5 @@
 # Models module
+from .base import BaseModel, BabyEventModel
 from .baby import BabyProfile
 from .diaper import DiaperEvent
 from .feeding import FeedingSession
@@ -7,8 +8,10 @@ from .growth import GrowthMeasurement
 from .health import HealthEvent
 
 __all__ = [
+    "BaseModel",
+    "BabyEventModel",
     "BabyProfile",
-    "DiaperEvent", 
+    "DiaperEvent",
     "FeedingSession",
     "SleepSession",
     "GrowthMeasurement",

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
@@ -6,6 +6,7 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.models.sleep import SleepSession
 from app.schemas.sleep import SleepSessionCreate, SleepSessionUpdate, SleepSessionResponse
+from app.services import sleep_service
 
 router = APIRouter()
 
@@ -16,11 +17,7 @@ def create_sleep_session(
     db: Session = Depends(get_db)
 ) -> SleepSession:
     """Create a new sleep session."""
-    db_sleep = SleepSession(**sleep.model_dump())
-    db.add(db_sleep)
-    db.commit()
-    db.refresh(db_sleep)
-    return db_sleep
+    return sleep_service.create(db, obj_in=sleep)
 
 
 @router.get("/", response_model=List[SleepSessionResponse])
@@ -31,14 +28,9 @@ def list_sleep_sessions(
     db: Session = Depends(get_db)
 ) -> List[SleepSession]:
     """List all sleep sessions with optional filtering."""
-    query = db.query(SleepSession)
-
-    if baby_id:
-        query = query.filter(SleepSession.baby_id == baby_id)
-
-    # Order by most recent first
-    sleeps = query.order_by(SleepSession.sleep_start.desc()).offset(skip).limit(limit).all()
-    return sleeps
+    return sleep_service.get_multi(
+        db, skip=skip, limit=limit, baby_id=baby_id, order_by_field="start_time"
+    )
 
 
 @router.get("/{sleep_id}", response_model=SleepSessionResponse)
@@ -47,15 +39,7 @@ def get_sleep_session(
     db: Session = Depends(get_db)
 ) -> SleepSession:
     """Get a specific sleep session by ID."""
-    sleep = db.query(SleepSession).filter(SleepSession.id == sleep_id).first()
-
-    if not sleep:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sleep session with id {sleep_id} not found"
-        )
-
-    return sleep
+    return sleep_service.get_or_404(db, sleep_id)
 
 
 @router.put("/{sleep_id}", response_model=SleepSessionResponse)
@@ -65,22 +49,8 @@ def update_sleep_session(
     db: Session = Depends(get_db)
 ) -> SleepSession:
     """Update a sleep session."""
-    sleep = db.query(SleepSession).filter(SleepSession.id == sleep_id).first()
-
-    if not sleep:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sleep session with id {sleep_id} not found"
-        )
-
-    # Update only provided fields
-    update_data = sleep_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(sleep, field, value)
-
-    db.commit()
-    db.refresh(sleep)
-    return sleep
+    db_sleep = sleep_service.get_or_404(db, sleep_id)
+    return sleep_service.update(db, db_obj=db_sleep, obj_in=sleep_update)
 
 
 @router.delete("/{sleep_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -89,13 +59,4 @@ def delete_sleep_session(
     db: Session = Depends(get_db)
 ) -> None:
     """Delete a sleep session."""
-    sleep = db.query(SleepSession).filter(SleepSession.id == sleep_id).first()
-
-    if not sleep:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sleep session with id {sleep_id} not found"
-        )
-
-    db.delete(sleep)
-    db.commit()
+    sleep_service.remove(db, id=sleep_id)
