@@ -8,7 +8,7 @@ Provides abstract base classes to eliminate duplication across models:
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -21,6 +21,7 @@ class BaseModel(Base):
     - id: UUID primary key
     - created_at: Timestamp when record was created
     - updated_at: Timestamp when record was last modified (auto-updates)
+    - source: Where the row came from ('app' or 'ingested')
     """
 
     __abstract__ = True
@@ -28,6 +29,9 @@ class BaseModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    # 'app' = created via the API; 'ingested' = loaded by the dbt-baby-data
+    # pipeline, which deletes and reloads only its own rows on each ingest.
+    source = Column(String(20), nullable=False, default="app", server_default="app")
 
 
 class BabyEventModel(BaseModel):
