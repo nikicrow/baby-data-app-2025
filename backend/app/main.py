@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 
 # Import routers
-from app.api import babies, feeding, sleep, diaper, growth, health
+from app.api import analytics, babies, feeding, sleep, diaper, growth, health
 
 app = FastAPI(
     title="Baby Data API",
@@ -36,3 +36,4 @@ app.include_router(sleep.router, prefix=f"{settings.API_V1_STR}/sleep", tags=["s
 app.include_router(diaper.router, prefix=f"{settings.API_V1_STR}/diaper", tags=["diaper"])
 app.include_router(growth.router, prefix=f"{settings.API_V1_STR}/growth", tags=["growth"])
 app.include_router(health.router, prefix=f"{settings.API_V1_STR}/health", tags=["health"])
+app.include_router(analytics.router, prefix=f"{settings.API_V1_STR}/analytics", tags=["analytics"])
