@@ -15,6 +15,8 @@ import type {
   GrowthMeasurement,
   GrowthMeasurementCreate,
   GrowthMeasurementUpdate,
+  ComparisonResponse,
+  DailyMetricsRow,
 } from '../types/api';
 
 // API Configuration
@@ -219,6 +221,28 @@ export const growthApi = {
   // Delete growth measurement
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/api/v1/growth/${id}`);
+  },
+};
+
+// ============= Analytics API (dbt mart-backed) =============
+export const analyticsApi = {
+  // All babies' metrics on a shared age axis (for the Compare tab)
+  compare: async (align: 'age_weeks' | 'age_days' = 'age_weeks'): Promise<ComparisonResponse> => {
+    const response = await apiClient.get<ComparisonResponse>('/api/v1/analytics/compare', {
+      params: { align },
+    });
+    return response.data;
+  },
+
+  // One baby's daily metric rows, optionally filtered by age range
+  getDailyMetrics: async (
+    babyId: string,
+    params?: { min_age_days?: number; max_age_days?: number }
+  ): Promise<DailyMetricsRow[]> => {
+    const response = await apiClient.get<DailyMetricsRow[]>('/api/v1/analytics/daily-metrics', {
+      params: { baby_id: babyId, ...params },
+    });
+    return response.data;
   },
 };
 

@@ -18,11 +18,12 @@ import {
   ScatterChart,
   Scatter
 } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale, Users } from "lucide-react";
 import { SleepAnalytics } from "./analytics/SleepAnalytics";
 import { FeedAnalytics } from "./analytics/FeedAnalytics";
 import { NappyAnalytics } from "./analytics/NappyAnalytics";
 import { GrowthAnalytics } from "./analytics/GrowthAnalytics";
+import { ComparisonAnalytics } from "./analytics/ComparisonAnalytics";
 import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
 import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
 import { isToday, parseISO, startOfDay, format, subDays } from "date-fns";
@@ -253,7 +254,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
     <div className="space-y-6">
       {/* Analytics Tabs */}
       <Tabs value={activeAnalyticsTab} onValueChange={setActiveAnalyticsTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -273,6 +274,10 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
           <TabsTrigger value="growth" className="flex items-center gap-2">
             <Scale className="w-4 h-4" />
             <span className="hidden sm:inline">Growth</span>
+          </TabsTrigger>
+          <TabsTrigger value="compare" className="flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Compare</span>
           </TabsTrigger>
         </TabsList>
 
@@ -612,6 +617,11 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
         <TabsContent value="growth" className="mt-6">
           <GrowthAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
+        </TabsContent>
+
+        <TabsContent value="compare" className="mt-6">
+          {/* Compares all babies, so no babyId prop */}
+          <ComparisonAnalytics />
         </TabsContent>
       </Tabs>
     </div>

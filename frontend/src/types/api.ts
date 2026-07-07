@@ -216,6 +216,62 @@ export interface GrowthMeasurementUpdate {
   notes?: string;
 }
 
+// Analytics (dbt mart-backed, read-only)
+export interface BabySummary {
+  baby_id: string;
+  baby_name: string;
+  date_of_birth: string;
+  max_age_days: number;
+}
+
+export interface WeeklyMetricsRow {
+  baby_id: string;
+  baby_name: string;
+  age_weeks: number;
+  days_in_week: number;
+  avg_night_sleep_minutes: number | null;
+  avg_longest_night_stretch_minutes: number | null;
+  avg_nap_count: number | null;
+  avg_total_nap_minutes: number | null;
+  avg_nap_length_minutes: number | null;
+  avg_feed_count: number | null;
+  avg_feed_interval_minutes: number | null;
+  avg_wake_window_minutes: number | null;
+  avg_max_wake_window_minutes: number | null;
+  avg_diaper_count: number | null;
+}
+
+export interface DailyMetricsRow {
+  baby_id: string;
+  baby_name: string;
+  metric_date: string;
+  age_days: number;
+  age_weeks: number;
+  night_sleep_minutes: number;
+  night_sleep_segments: number | null;
+  longest_night_stretch_minutes: number | null;
+  nap_count: number;
+  total_nap_minutes: number;
+  avg_nap_minutes: number | null;
+  feed_count: number;
+  breast_feed_count: number;
+  bottle_feed_count: number;
+  total_volume_ml: number | null;
+  avg_feed_interval_minutes: number | null;
+  avg_wake_window_minutes: number | null;
+  max_wake_window_minutes: number | null;
+  diaper_count: number;
+  wet_diaper_count: number;
+  dirty_diaper_count: number;
+}
+
+export interface ComparisonResponse {
+  align: 'age_weeks' | 'age_days';
+  babies: BabySummary[];
+  weekly: WeeklyMetricsRow[] | null;
+  daily: DailyMetricsRow[] | null;
+}
+
 // Generic API Response
 export interface ApiError {
   detail: string;
