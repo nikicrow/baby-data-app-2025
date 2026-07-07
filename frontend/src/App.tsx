@@ -69,8 +69,9 @@ export default function App() {
   // Dropdown when there are multiple babies; plain text otherwise
   const babySwitcher = babies.length > 1 && currentBaby ? (
     <Select value={currentBaby.id} onValueChange={handleBabyChange}>
+      {/* index.css is a prebuilt stylesheet (no Tailwind build) — only use classes that exist in it */}
       <SelectTrigger
-        className="h-8 w-36 bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground focus:ring-primary-foreground/30"
+        className="h-8 w-36 bg-background text-foreground"
         aria-label="Switch baby"
       >
         <SelectValue />
