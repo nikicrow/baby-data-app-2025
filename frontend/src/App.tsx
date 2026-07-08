@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "./components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 import { AppRoutes } from "./router";
 import { Baby, BarChart3, Clock, Plus } from "lucide-react";
 import { babyApi, feedingApi, sleepApi, diaperApi, growthApi } from "./services/api";
@@ -11,6 +18,7 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname;
+  const [babies, setBabies] = useState<BabyProfile[]>([]);
   const [currentBaby, setCurrentBaby] = useState<BabyProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -25,11 +33,12 @@ export default function App() {
       setLoading(true);
 
       // Try to fetch existing babies
-      const babies = await babyApi.getAll();
+      const existingBabies = await babyApi.getAll();
 
-      if (babies.length > 0) {
+      if (existingBabies.length > 0) {
+        setBabies(existingBabies);
         // Use the first active baby
-        const activeBaby = babies.find(b => b.is_active) || babies[0];
+        const activeBaby = existingBabies.find(b => b.is_active) || existingBabies[0];
         setCurrentBaby(activeBaby);
       } else {
         // Create a default baby profile for testing
@@ -38,6 +47,7 @@ export default function App() {
           date_of_birth: new Date().toISOString().split('T')[0],
           timezone: "Australia/Sydney"
         });
+        setBabies([newBaby]);
         setCurrentBaby(newBaby);
         toast.success("Baby profile created!");
       }
@@ -48,6 +58,33 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  const handleBabyChange = (babyId: string) => {
+    const selected = babies.find(b => b.id === babyId);
+    if (selected) {
+      setCurrentBaby(selected);
+    }
+  };
+
+  // Dropdown when there are multiple babies; plain text otherwise
+  const babySwitcher = babies.length > 1 && currentBaby ? (
+    <Select value={currentBaby.id} onValueChange={handleBabyChange}>
+      {/* index.css is a prebuilt stylesheet (no Tailwind build) — only use classes that exist in it */}
+      <SelectTrigger
+        className="h-8 w-36 bg-background text-foreground"
+        aria-label="Switch baby"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {babies.map(baby => (
+          <SelectItem key={baby.id} value={baby.id}>
+            {baby.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : null;
 
   const handleActivityAdded = () => {
     // Trigger refresh of activity feed
@@ -88,7 +125,14 @@ export default function App() {
               <Baby className="w-8 h-8" />
               <h1 className="text-2xl font-bold">BabyTracker</h1>
             </div>
-            <p className="text-primary-foreground/80">Tracking {currentBaby.name}</p>
+            {babySwitcher ? (
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-primary-foreground/80">Tracking</span>
+                {babySwitcher}
+              </div>
+            ) : (
+              <p className="text-primary-foreground/80">Tracking {currentBaby.name}</p>
+            )}
           </div>
 
           {/* Main Navigation */}
@@ -152,7 +196,14 @@ export default function App() {
               <Baby className="w-8 h-8" />
               <div>
                 <h1 className="text-xl font-bold">BabyTracker</h1>
-                <p className="text-primary-foreground/80 text-sm">Tracking {currentBaby.name}</p>
+                {babySwitcher ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-primary-foreground/80 text-sm">Tracking</span>
+                    {babySwitcher}
+                  </div>
+                ) : (
+                  <p className="text-primary-foreground/80 text-sm">Tracking {currentBaby.name}</p>
+                )}
               </div>
             </div>
           </div>

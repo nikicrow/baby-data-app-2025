@@ -734,6 +734,14 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
+  .grid-cols-6 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .w-36 {
+    width: calc(var(--spacing) * 36);
+  }
+
   .grid-rows-\[auto_auto\] {
     grid-template-rows: auto auto;
   }

@@ -10,10 +10,12 @@ class SleepSessionFields(TimedSessionFieldsMixin, NotesMixin):
     """Fields-only base for sleep sessions (no validators).
 
     Used by Response schemas that shouldn't run input validation.
+    sleep_quality is optional here: rows ingested from tracker exports
+    have no quality recorded and are NULL in the database.
     """
     sleep_type: SleepType = SleepType.NAP
     location: SleepLocation = SleepLocation.CRIB
-    sleep_quality: SleepQuality = SleepQuality.GOOD
+    sleep_quality: Optional[SleepQuality] = None
     sleep_environment: Optional[Dict[str, Any]] = None
     wake_reason: Optional[WakeReason] = None
 
