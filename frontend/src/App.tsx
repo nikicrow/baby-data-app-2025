@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "./components/ui/select";
 import { AppRoutes } from "./router";
+import { INSIGHTS_TABS } from "./components/analytics/insightsTabs";
 import { Baby, BarChart3, Clock, Plus } from "lucide-react";
 import { babyApi, feedingApi, sleepApi, diaperApi, growthApi } from "./services/api";
 import type { BabyProfile } from "./types/api";
@@ -18,6 +19,8 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname;
+  // Which analytics tab is showing (mirrors ?tab= used by InsightsDashboard).
+  const currentTab = new URLSearchParams(location.search).get('tab') ?? 'overview';
   const [babies, setBabies] = useState<BabyProfile[]>([]);
   const [currentBaby, setCurrentBaby] = useState<BabyProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -177,7 +180,7 @@ export default function App() {
 
             <div className="p-6">
               <AppRoutes
-                babyId={currentBaby.id}
+                baby={currentBaby}
                 onActivityAdded={handleActivityAdded}
                 refreshTrigger={refreshTrigger}
               />
@@ -231,6 +234,24 @@ export default function App() {
                 </Button>
               </Link>
 
+              {/* Analytics sub-sections — deep link into each Insights tab */}
+              <div className="pl-2 border-l border-border space-y-2">
+                {INSIGHTS_TABS.map(({ value, label, icon: Icon }) => {
+                  const active = currentPath === '/insights' && currentTab === value;
+                  return (
+                    <Link key={value} to={`/insights?tab=${value}`}>
+                      <Button
+                        variant={active ? 'default' : 'ghost'}
+                        className="w-full justify-start gap-2 h-9 text-sm"
+                      >
+                        <Icon className="w-4 h-4" />
+                        {label}
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+
               <Link to="/activityhistory">
                 <Button
                   variant={currentPath === '/activityhistory' ? 'default' : 'ghost'}
@@ -248,7 +269,7 @@ export default function App() {
         <div className="flex-1 overflow-auto">
           <div className="max-w-6xl mx-auto p-8">
             <AppRoutes
-              babyId={currentBaby.id}
+              baby={currentBaby}
               onActivityAdded={handleActivityAdded}
               refreshTrigger={refreshTrigger}
             />

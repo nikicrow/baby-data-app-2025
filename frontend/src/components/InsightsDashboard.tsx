@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
@@ -18,24 +19,51 @@ import {
   ScatterChart,
   Scatter
 } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
 import { SleepAnalytics } from "./analytics/SleepAnalytics";
 import { FeedAnalytics } from "./analytics/FeedAnalytics";
 import { NappyAnalytics } from "./analytics/NappyAnalytics";
 import { GrowthAnalytics } from "./analytics/GrowthAnalytics";
 import { ComparisonAnalytics } from "./analytics/ComparisonAnalytics";
+import { ReferenceDatePicker } from "./analytics/ReferenceDatePicker";
+import { INSIGHTS_TABS } from "./analytics/insightsTabs";
 import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
-import type { FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
+import type { BabyProfile, FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
 import { isToday, parseISO, startOfDay, format, subDays } from "date-fns";
 
+// Fetch enough history so past dates/ages have data (default API limit is 100).
+const HISTORY_LIMIT = 2000;
+
 interface InsightsDashboardProps {
-  babyId: string;
+  baby: BabyProfile;
   refreshTrigger: number;
 }
 
-export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardProps) {
-  const [activeAnalyticsTab, setActiveAnalyticsTab] = useState('overview');
+export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardProps) {
+  const babyId = baby.id;
+
+  // The active analytics tab lives in the URL (?tab=…) so the sidebar can deep
+  // link into it and stay in sync with the in-page tab bar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') ?? '';
+  const activeAnalyticsTab = INSIGHTS_TABS.some(t => t.value === tabParam)
+    ? tabParam
+    : 'overview';
+  const setActiveAnalyticsTab = (value: string) => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', value);
+        return next;
+      },
+      { replace: true }
+    );
+  };
   const [loading, setLoading] = useState(true);
+
+  // The date the insights are anchored to. Defaults to now ("today"), but the
+  // user can rewind to any past date/age via the ReferenceDatePicker.
+  const [referenceDate, setReferenceDate] = useState<Date>(new Date());
 
   // Real data from backend
   const [feedings, setFeedings] = useState<FeedingSession[]>([]);
@@ -51,10 +79,10 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
     try {
       setLoading(true);
       const [feedingsData, sleepsData, diapersData, growthsData] = await Promise.all([
-        feedingApi.getAll({ baby_id: babyId }),
-        sleepApi.getAll({ baby_id: babyId }),
-        diaperApi.getAll({ baby_id: babyId }),
-        growthApi.getAll({ baby_id: babyId }),
+        feedingApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+        sleepApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+        diaperApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+        growthApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
       ]);
 
       setFeedings(feedingsData);
@@ -68,10 +96,18 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
     }
   };
 
+  // Anchor all "today" / relative-window calculations on the reference date so
+  // the dashboard can show any past day, not just the real today.
+  const now = referenceDate;
+  const viewingToday = isToday(now);
+  const dayLabel = format(now, 'MMM d');
+  const isRefDay = (dateStr: string) =>
+    startOfDay(parseISO(dateStr)).getTime() === startOfDay(now).getTime();
+
   // Calculate real analytics from data
-  const todayFeedings = feedings.filter(f => isToday(parseISO(f.start_time)));
-  const todaySleeps = sleeps.filter(s => isToday(parseISO(s.start_time)));
-  const todayDiapers = diapers.filter(d => isToday(parseISO(d.timestamp)));
+  const todayFeedings = feedings.filter(f => isRefDay(f.start_time));
+  const todaySleeps = sleeps.filter(s => isRefDay(s.start_time));
+  const todayDiapers = diapers.filter(d => isRefDay(d.timestamp));
 
   const totalSleepToday = todaySleeps.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   const sleepHoursToday = Math.floor(totalSleepToday / 60);
@@ -79,7 +115,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   // Weekly feed data - last 7 days
   const weeklyFeedData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
+    const date = subDays(now, 6 - i);
     const dayFeedings = feedings.filter(f => {
       const feedDate = parseISO(f.start_time);
       return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
@@ -114,7 +150,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   // Sleep pattern data - last 7 days
   const sleepPatternData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
+    const date = subDays(now, 6 - i);
     const daySleeps = sleeps.filter((s: SleepSession) => {
       const sleepDate = parseISO(s.start_time);
       return startOfDay(sleepDate).getTime() === startOfDay(date).getTime();
@@ -128,7 +164,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   // Correlation data - feeds vs diapers per day (last 14 days)
   const correlationData = Array.from({ length: 14 }, (_, i) => {
-    const date = subDays(new Date(), 13 - i);
+    const date = subDays(now, 13 - i);
     const dayFeeds = feedings.filter((f: FeedingSession) => {
       const feedDate = parseISO(f.start_time);
       return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
@@ -252,33 +288,23 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
 
   return (
     <div className="space-y-6">
+      {/* Reference date / age selector — lets you look into the past */}
+      <ReferenceDatePicker
+        referenceDate={referenceDate}
+        onChange={setReferenceDate}
+        dateOfBirth={baby.date_of_birth}
+        babyName={baby.name}
+      />
+
       {/* Analytics Tabs */}
       <Tabs value={activeAnalyticsTab} onValueChange={setActiveAnalyticsTab} className="w-full">
         <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            <span className="hidden sm:inline">Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="sleep" className="flex items-center gap-2">
-            <Moon className="w-4 h-4" />
-            <span className="hidden sm:inline">Sleep</span>
-          </TabsTrigger>
-          <TabsTrigger value="feeds" className="flex items-center gap-2">
-            <Baby className="w-4 h-4" />
-            <span className="hidden sm:inline">Feeds</span>
-          </TabsTrigger>
-          <TabsTrigger value="nappies" className="flex items-center gap-2">
-            <Droplets className="w-4 h-4" />
-            <span className="hidden sm:inline">Nappies</span>
-          </TabsTrigger>
-          <TabsTrigger value="growth" className="flex items-center gap-2">
-            <Scale className="w-4 h-4" />
-            <span className="hidden sm:inline">Growth</span>
-          </TabsTrigger>
-          <TabsTrigger value="compare" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Compare</span>
-          </TabsTrigger>
+          {INSIGHTS_TABS.map(({ value, label, icon: Icon }) => (
+            <TabsTrigger key={value} value={value} className="flex items-center gap-2">
+              <Icon className="w-4 h-4" />
+              <span className="hidden sm:inline">{label}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -289,7 +315,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
                 <CardContent className="p-4 lg:p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Today's Feeds</p>
+                      <p className="text-sm text-muted-foreground">{viewingToday ? "Today's Feeds" : `Feeds · ${dayLabel}`}</p>
                       <p className="text-2xl font-bold">{todayFeedings.length}</p>
                     </div>
                     <Baby className="w-8 h-8 text-blue-600" />
@@ -307,7 +333,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
                 <CardContent className="p-4 lg:p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Sleep Today</p>
+                      <p className="text-sm text-muted-foreground">{viewingToday ? "Sleep Today" : `Sleep · ${dayLabel}`}</p>
                       <p className="text-2xl font-bold">
                         {totalSleepToday > 0 ? `${sleepHoursToday}h ${sleepMinsToday}m` : '0h'}
                       </p>
@@ -327,7 +353,7 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
                 <CardContent className="p-4 lg:p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Nappies Today</p>
+                      <p className="text-sm text-muted-foreground">{viewingToday ? "Nappies Today" : `Nappies · ${dayLabel}`}</p>
                       <p className="text-2xl font-bold">{todayDiapers.length}</p>
                     </div>
                     <Droplets className="w-8 h-8 text-orange-600" />
@@ -604,15 +630,15 @@ export function InsightsDashboard({ babyId, refreshTrigger }: InsightsDashboardP
         </TabsContent>
 
         <TabsContent value="sleep" className="mt-6">
-          <SleepAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
+          <SleepAnalytics babyId={babyId} refreshTrigger={refreshTrigger} referenceDate={referenceDate} />
         </TabsContent>
 
         <TabsContent value="feeds" className="mt-6">
-          <FeedAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
+          <FeedAnalytics babyId={babyId} refreshTrigger={refreshTrigger} referenceDate={referenceDate} />
         </TabsContent>
 
         <TabsContent value="nappies" className="mt-6">
-          <NappyAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
+          <NappyAnalytics babyId={babyId} refreshTrigger={refreshTrigger} referenceDate={referenceDate} />
         </TabsContent>
 
         <TabsContent value="growth" className="mt-6">

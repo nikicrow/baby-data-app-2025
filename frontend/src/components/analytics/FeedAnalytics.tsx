@@ -26,9 +26,11 @@ import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } 
 interface FeedAnalyticsProps {
   babyId: string;
   refreshTrigger?: number;
+  /** Anchor for all relative time windows. Defaults to the real "now". */
+  referenceDate?: Date;
 }
 
-export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
+export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAnalyticsProps) {
   const [feedings, setFeedings] = useState<FeedingSession[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +41,7 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
   const fetchFeedings = async () => {
     try {
       setLoading(true);
-      const data = await feedingApi.getAll({ baby_id: babyId });
+      const data = await feedingApi.getAll({ baby_id: babyId, limit: 2000 });
       setFeedings(data);
     } catch (error) {
       console.error('Failed to fetch feeding data:', error);
@@ -51,6 +53,9 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading feeding analytics...</div>;
   }
+
+  // Anchor all relative windows on the reference date (defaults to now).
+  const now = referenceDate ?? new Date();
 
   // Calculate analytics from real data
 
@@ -78,7 +83,7 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
 
   // Last 7 days feeding trends
   const feedingTrendsData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
+    const date = subDays(now, 6 - i);
     const dayFeedings = feedings.filter((f: FeedingSession) => {
       const feedDate = parseISO(f.start_time);
       return startOfDay(feedDate).getTime() === startOfDay(date).getTime();
@@ -142,8 +147,8 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
 
   // Volume progress (last 6 weeks)
   const volumeProgressData = Array.from({ length: 6 }, (_, i) => {
-    const weekStart = subDays(new Date(), (5 - i) * 7);
-    const weekEnd = subDays(new Date(), (5 - i) * 7 - 7);
+    const weekStart = subDays(now, (5 - i) * 7);
+    const weekEnd = subDays(now, (5 - i) * 7 - 7);
 
     const weekFeedings = feedings.filter((f: FeedingSession) => {
       const feedDate = parseISO(f.start_time);
@@ -197,7 +202,7 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
   // Calculate key metrics
   const last7DaysFeedings = feedings.filter((f: FeedingSession) => {
     const feedDate = parseISO(f.start_time);
-    return feedDate >= subDays(new Date(), 7);
+    return feedDate >= subDays(now, 7);
   });
 
   const dailyAverage = (last7DaysFeedings.length / 7).toFixed(1);
@@ -207,7 +212,7 @@ export function FeedAnalytics({ babyId, refreshTrigger }: FeedAnalyticsProps) {
 
   const todayVolume = feedings.filter((f: FeedingSession) => {
     const feedDate = parseISO(f.start_time);
-    return startOfDay(feedDate).getTime() === startOfDay(new Date()).getTime();
+    return startOfDay(feedDate).getTime() === startOfDay(now).getTime();
   }).reduce((sum: number, f: FeedingSession) => sum + (f.amount_ml || 0), 0);
 
   const avgVolume = feedingTrendsData.reduce((sum, d) => sum + d.totalVolume, 0) / 7;
