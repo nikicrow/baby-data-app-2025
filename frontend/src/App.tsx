@@ -177,7 +177,7 @@ export default function App() {
 
             <div className="p-6">
               <AppRoutes
-                babyId={currentBaby.id}
+                baby={currentBaby}
                 onActivityAdded={handleActivityAdded}
                 refreshTrigger={refreshTrigger}
               />
@@ -248,7 +248,7 @@ export default function App() {
         <div className="flex-1 overflow-auto">
           <div className="max-w-6xl mx-auto p-8">
             <AppRoutes
-              babyId={currentBaby.id}
+              baby={currentBaby}
               onActivityAdded={handleActivityAdded}
               refreshTrigger={refreshTrigger}
             />

@@ -2,14 +2,16 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { LogActivity } from "./components/LogActivity";
 import { InsightsDashboard } from "./components/InsightsDashboard";
 import { ActivityFeed } from "./components/ActivityFeed";
+import type { BabyProfile } from "./types/api";
 
 interface AppRoutesProps {
-  babyId: string;
+  baby: BabyProfile;
   onActivityAdded: () => void;
   refreshTrigger: number;
 }
 
-export function AppRoutes({ babyId, onActivityAdded, refreshTrigger }: AppRoutesProps) {
+export function AppRoutes({ baby, onActivityAdded, refreshTrigger }: AppRoutesProps) {
+  const babyId = baby.id;
   return (
     <Routes>
       {/* Default route - redirect / to /logactivity */}
@@ -22,7 +24,7 @@ export function AppRoutes({ babyId, onActivityAdded, refreshTrigger }: AppRoutes
       />
       <Route
         path="/insights"
-        element={<InsightsDashboard babyId={babyId} refreshTrigger={refreshTrigger} />}
+        element={<InsightsDashboard baby={baby} refreshTrigger={refreshTrigger} />}
       />
       <Route
         path="/activityhistory"

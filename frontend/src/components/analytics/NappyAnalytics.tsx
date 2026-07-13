@@ -24,9 +24,11 @@ import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } 
 interface NappyAnalyticsProps {
   babyId: string;
   refreshTrigger?: number;
+  /** Anchor for all relative time windows. Defaults to the real "now". */
+  referenceDate?: Date;
 }
 
-export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) {
+export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyAnalyticsProps) {
   const [diapers, setDiapers] = useState<DiaperEvent[]>([]);
   const [feedings, setFeedings] = useState<FeedingSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +41,8 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
     try {
       setLoading(true);
       const [diapersData, feedingsData] = await Promise.all([
-        diaperApi.getAll({ baby_id: babyId }),
-        feedingApi.getAll({ baby_id: babyId }),
+        diaperApi.getAll({ baby_id: babyId, limit: 2000 }),
+        feedingApi.getAll({ baby_id: babyId, limit: 2000 }),
       ]);
       setDiapers(diapersData);
       setFeedings(feedingsData);
@@ -54,6 +56,9 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading nappy analytics...</div>;
   }
+
+  // Anchor all relative windows on the reference date (defaults to now).
+  const now = referenceDate ?? new Date();
 
   // Calculate analytics from real data
 
@@ -82,7 +87,7 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
 
   // Last 7 days nappy trends
   const weeklyNappyTrends = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
+    const date = subDays(now, 6 - i);
     const dayDiapers = diapers.filter((d: DiaperEvent) => {
       const diaperDate = parseISO(d.timestamp);
       return startOfDay(diaperDate).getTime() === startOfDay(date).getTime();
@@ -185,8 +190,8 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
 
   // Health indicators by week (last 6 weeks)
   const nappyHealthIndicators = Array.from({ length: 6 }, (_, i) => {
-    const weekStart = subDays(new Date(), (5 - i) * 7 + 7);
-    const weekEnd = subDays(new Date(), (5 - i) * 7);
+    const weekStart = subDays(now, (5 - i) * 7 + 7);
+    const weekEnd = subDays(now, (5 - i) * 7);
 
     const weekDiapers = diapers.filter((d: DiaperEvent) => {
       const diaperDate = parseISO(d.timestamp);
@@ -220,7 +225,7 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
   // Calculate key metrics
   const last7DaysDiapers = diapers.filter((d: DiaperEvent) => {
     const diaperDate = parseISO(d.timestamp);
-    return diaperDate >= subDays(new Date(), 7);
+    return diaperDate >= subDays(now, 7);
   });
 
   const dailyAverage = (last7DaysDiapers.length / 7).toFixed(0);
@@ -242,11 +247,11 @@ export function NappyAnalytics({ babyId, refreshTrigger }: NappyAnalyticsProps) 
   // Week over week comparison
   const thisWeekDiapers = diapers.filter((d: DiaperEvent) => {
     const diaperDate = parseISO(d.timestamp);
-    return diaperDate >= subDays(new Date(), 7);
+    return diaperDate >= subDays(now, 7);
   });
   const lastWeekDiapers = diapers.filter((d: DiaperEvent) => {
     const diaperDate = parseISO(d.timestamp);
-    return diaperDate >= subDays(new Date(), 14) && diaperDate < subDays(new Date(), 7);
+    return diaperDate >= subDays(now, 14) && diaperDate < subDays(now, 7);
   });
 
   const weekChange = thisWeekDiapers.length - lastWeekDiapers.length;

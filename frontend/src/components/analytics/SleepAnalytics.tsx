@@ -26,9 +26,11 @@ import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } 
 interface SleepAnalyticsProps {
   babyId: string;
   refreshTrigger?: number;
+  /** Anchor for all relative time windows. Defaults to the real "now". */
+  referenceDate?: Date;
 }
 
-export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) {
+export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepAnalyticsProps) {
   const [sleeps, setSleeps] = useState<SleepSession[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +41,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   const fetchSleeps = async () => {
     try {
       setLoading(true);
-      const data = await sleepApi.getAll({ baby_id: babyId });
+      const data = await sleepApi.getAll({ baby_id: babyId, limit: 2000 });
       setSleeps(data);
     } catch (error) {
       console.error('Failed to fetch sleep data:', error);
@@ -52,11 +54,14 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
     return <div className="flex items-center justify-center p-8">Loading sleep analytics...</div>;
   }
 
+  // Anchor all relative windows on the reference date (defaults to now).
+  const now = referenceDate ?? new Date();
+
   // Calculate analytics from real data
 
   // Last 7 days sleep trends
   const sleepTrendsData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
+    const date = subDays(now, 6 - i);
     const daySleeps = sleeps.filter((s: SleepSession) => {
       const sleepDate = parseISO(s.start_time);
       return startOfDay(sleepDate).getTime() === startOfDay(date).getTime();
@@ -194,8 +199,8 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
 
   // Sleep efficiency by week (last 6 weeks)
   const sleepEfficiencyData = Array.from({ length: 6 }, (_, i) => {
-    const weekStart = subDays(new Date(), (5 - i) * 7 + 7);
-    const weekEnd = subDays(new Date(), (5 - i) * 7);
+    const weekStart = subDays(now, (5 - i) * 7 + 7);
+    const weekEnd = subDays(now, (5 - i) * 7);
 
     const weekSleeps = sleeps.filter((s: SleepSession) => {
       const sleepDate = parseISO(s.start_time);
@@ -229,7 +234,7 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   // Calculate key metrics
   const last7DaysSleeps = sleeps.filter((s: SleepSession) => {
     const sleepDate = parseISO(s.start_time);
-    return sleepDate >= subDays(new Date(), 7);
+    return sleepDate >= subDays(now, 7);
   });
 
   const currentEfficiency = sleepEfficiencyData.length > 0
@@ -243,11 +248,11 @@ export function SleepAnalytics({ babyId, refreshTrigger }: SleepAnalyticsProps) 
   // Week over week comparison
   const thisWeekSleeps = sleeps.filter((s: SleepSession) => {
     const sleepDate = parseISO(s.start_time);
-    return sleepDate >= subDays(new Date(), 7);
+    return sleepDate >= subDays(now, 7);
   });
   const lastWeekSleeps = sleeps.filter((s: SleepSession) => {
     const sleepDate = parseISO(s.start_time);
-    return sleepDate >= subDays(new Date(), 14) && sleepDate < subDays(new Date(), 7);
+    return sleepDate >= subDays(now, 14) && sleepDate < subDays(now, 7);
   });
 
   const thisWeekNightSleep = thisWeekSleeps
