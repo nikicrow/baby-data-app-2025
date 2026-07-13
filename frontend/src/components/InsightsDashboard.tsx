@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
@@ -18,13 +19,14 @@ import {
   ScatterChart,
   Scatter
 } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
 import { SleepAnalytics } from "./analytics/SleepAnalytics";
 import { FeedAnalytics } from "./analytics/FeedAnalytics";
 import { NappyAnalytics } from "./analytics/NappyAnalytics";
 import { GrowthAnalytics } from "./analytics/GrowthAnalytics";
 import { ComparisonAnalytics } from "./analytics/ComparisonAnalytics";
 import { ReferenceDatePicker } from "./analytics/ReferenceDatePicker";
+import { INSIGHTS_TABS } from "./analytics/insightsTabs";
 import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
 import type { BabyProfile, FeedingSession, SleepSession, DiaperEvent, GrowthMeasurement } from "../types/api";
 import { isToday, parseISO, startOfDay, format, subDays } from "date-fns";
@@ -39,7 +41,24 @@ interface InsightsDashboardProps {
 
 export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardProps) {
   const babyId = baby.id;
-  const [activeAnalyticsTab, setActiveAnalyticsTab] = useState('overview');
+
+  // The active analytics tab lives in the URL (?tab=…) so the sidebar can deep
+  // link into it and stay in sync with the in-page tab bar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') ?? '';
+  const activeAnalyticsTab = INSIGHTS_TABS.some(t => t.value === tabParam)
+    ? tabParam
+    : 'overview';
+  const setActiveAnalyticsTab = (value: string) => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', value);
+        return next;
+      },
+      { replace: true }
+    );
+  };
   const [loading, setLoading] = useState(true);
 
   // The date the insights are anchored to. Defaults to now ("today"), but the
@@ -280,30 +299,12 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
       {/* Analytics Tabs */}
       <Tabs value={activeAnalyticsTab} onValueChange={setActiveAnalyticsTab} className="w-full">
         <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            <span className="hidden sm:inline">Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="sleep" className="flex items-center gap-2">
-            <Moon className="w-4 h-4" />
-            <span className="hidden sm:inline">Sleep</span>
-          </TabsTrigger>
-          <TabsTrigger value="feeds" className="flex items-center gap-2">
-            <Baby className="w-4 h-4" />
-            <span className="hidden sm:inline">Feeds</span>
-          </TabsTrigger>
-          <TabsTrigger value="nappies" className="flex items-center gap-2">
-            <Droplets className="w-4 h-4" />
-            <span className="hidden sm:inline">Nappies</span>
-          </TabsTrigger>
-          <TabsTrigger value="growth" className="flex items-center gap-2">
-            <Scale className="w-4 h-4" />
-            <span className="hidden sm:inline">Growth</span>
-          </TabsTrigger>
-          <TabsTrigger value="compare" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Compare</span>
-          </TabsTrigger>
+          {INSIGHTS_TABS.map(({ value, label, icon: Icon }) => (
+            <TabsTrigger key={value} value={value} className="flex items-center gap-2">
+              <Icon className="w-4 h-4" />
+              <span className="hidden sm:inline">{label}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
