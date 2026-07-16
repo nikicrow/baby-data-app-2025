@@ -18,9 +18,9 @@ import {
   Cell,
   ComposedChart
 } from 'recharts';
-import { Moon, Clock, TrendingUp, Target, Zap, Sun } from "lucide-react";
-import { sleepApi } from "../../services/api";
-import type { SleepSession } from "../../types/api";
+import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing } from "lucide-react";
+import { sleepApi, analyticsApi } from "../../services/api";
+import type { SleepSession, DailyMetricsRow } from "../../types/api";
 import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
 
 interface SleepAnalyticsProps {
@@ -32,6 +32,7 @@ interface SleepAnalyticsProps {
 
 export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepAnalyticsProps) {
   const [sleeps, setSleeps] = useState<SleepSession[]>([]);
+  const [dailyMetrics, setDailyMetrics] = useState<DailyMetricsRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +44,16 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
       setLoading(true);
       const data = await sleepApi.getAll({ baby_id: babyId, limit: 2000 });
       setSleeps(data);
+      // Night wakings / time-awake come from the dbt daily-metrics mart, not the
+      // raw sleep sessions. This endpoint 503s if the mart hasn't been built —
+      // fall back to an empty set so the rest of the tab still renders.
+      try {
+        const metrics = await analyticsApi.getDailyMetrics(babyId);
+        setDailyMetrics(metrics);
+      } catch (metricsError) {
+        console.error('Failed to fetch daily metrics:', metricsError);
+        setDailyMetrics([]);
+      }
     } catch (error) {
       console.error('Failed to fetch sleep data:', error);
     } finally {
@@ -56,6 +67,33 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
 
   // Anchor all relative windows on the reference date (defaults to now).
   const now = referenceDate ?? new Date();
+
+  // Night wakings & time awake at night — sourced from the dbt daily-metrics
+  // mart (night_waking_count / awake_at_night_minutes), last 14 days.
+  const nightWakingTrend = Array.from({ length: 14 }, (_, i) => {
+    const date = subDays(now, 13 - i);
+    const row = dailyMetrics.find(
+      (d) => startOfDay(parseISO(d.metric_date)).getTime() === startOfDay(date).getTime()
+    );
+    return {
+      date: format(date, 'MMM d'),
+      wakings: row?.night_waking_count ?? null,
+      awakeMinutes: row?.awake_at_night_minutes ?? null,
+    };
+  });
+  const hasNightWakingData = nightWakingTrend.some(
+    (d) => d.wakings !== null || d.awakeMinutes !== null
+  );
+
+  // 14-day averages for the summary cards (only over days that have a value).
+  const wakingValues = nightWakingTrend.map((d) => d.wakings).filter((v): v is number => v !== null);
+  const awakeValues = nightWakingTrend.map((d) => d.awakeMinutes).filter((v): v is number => v !== null);
+  const avgNightWakings = wakingValues.length > 0
+    ? wakingValues.reduce((a, b) => a + b, 0) / wakingValues.length
+    : 0;
+  const avgAwakeMinutes = awakeValues.length > 0
+    ? awakeValues.reduce((a, b) => a + b, 0) / awakeValues.length
+    : 0;
 
   // Calculate analytics from real data
 
@@ -418,6 +456,66 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
           </CardContent>
         </Card>
       </div>
+
+      {/* Night Wakings & Time Awake at Night (from dbt daily-metrics mart) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BellRing className="w-5 h-5 text-orange-600" />
+            Night Wakings & Time Awake
+          </CardTitle>
+          <CardDescription>
+            Nightly wake-ups and total minutes spent awake overnight (last 14 days)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {hasNightWakingData ? (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={nightWakingTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis yAxisId="wakings" orientation="left" allowDecimals={false} />
+                  <YAxis yAxisId="minutes" orientation="right" />
+                  <Bar
+                    yAxisId="wakings"
+                    dataKey="wakings"
+                    fill="#ffc658"
+                    name="Night wakings"
+                  />
+                  <Line
+                    yAxisId="minutes"
+                    type="monotone"
+                    dataKey="awakeMinutes"
+                    stroke="#ff7c7c"
+                    strokeWidth={2}
+                    name="Time awake (min)"
+                    connectNulls
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Avg night wakings</p>
+                  <p className="text-2xl font-bold">{avgNightWakings.toFixed(1)}</p>
+                  <p className="text-xs text-muted-foreground">per night</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Avg time awake</p>
+                  <p className="text-2xl font-bold">{Math.round(avgAwakeMinutes)}</p>
+                  <p className="text-xs text-muted-foreground">min per night</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-[300px] text-muted-foreground text-center px-4">
+              No night-waking data available. These metrics come from the dbt
+              daily-metrics mart — run <code className="mx-1">dbt run</code> in the
+              dbt-baby-data repo to populate them.
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Wake Windows Analysis */}
       <Card>

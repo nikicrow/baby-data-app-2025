@@ -25,6 +25,8 @@ def make_daily_row(**overrides) -> dict:
         "night_sleep_minutes": 589,
         "night_sleep_segments": 3,
         "longest_night_stretch_minutes": 320,
+        "night_waking_count": 2,
+        "awake_at_night_minutes": 35,
         "nap_count": 4,
         "total_nap_minutes": 260,
         "avg_nap_minutes": 65,

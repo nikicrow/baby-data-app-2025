@@ -32,6 +32,8 @@ type MetricKey = keyof Pick<
   | 'avg_feed_interval_minutes'
   | 'avg_wake_window_minutes'
   | 'avg_longest_night_stretch_minutes'
+  | 'avg_night_waking_count'
+  | 'avg_awake_at_night_minutes'
 >;
 
 export function ComparisonAnalytics() {
@@ -123,6 +125,8 @@ export function ComparisonAnalytics() {
   const feedsData = pivot('avg_feed_count');
   const napLengthData = pivot('avg_nap_length_minutes');
   const wakeWindowData = pivot('avg_wake_window_minutes');
+  const nightWakingsData = pivot('avg_night_waking_count');
+  const awakeAtNightData = pivot('avg_awake_at_night_minutes');
 
   const summaries = [
     {
@@ -280,6 +284,18 @@ export function ComparisonAnalytics() {
           'Wake windows',
           'Average daytime wake window in minutes, by week of age',
           wakeWindowData,
+          'Minutes'
+        )}
+        {comparisonChart(
+          'Night wakings',
+          'Average number of night wakings per night, by week of age',
+          nightWakingsData,
+          'Wakings / night'
+        )}
+        {comparisonChart(
+          'Time awake at night',
+          'Average minutes awake overnight, by week of age',
+          awakeAtNightData,
           'Minutes'
         )}
       </div>
