@@ -24,6 +24,8 @@ class DailyMetricsRow(BaseModel):
     night_sleep_minutes: int
     night_sleep_segments: Optional[int] = None
     longest_night_stretch_minutes: Optional[int] = None
+    night_waking_count: Optional[int] = None
+    awake_at_night_minutes: Optional[int] = None
     nap_count: int
     total_nap_minutes: int
     avg_nap_minutes: Optional[int] = None
@@ -49,6 +51,8 @@ class WeeklyMetricsRow(BaseModel):
     days_in_week: int
     avg_night_sleep_minutes: Optional[float] = None
     avg_longest_night_stretch_minutes: Optional[float] = None
+    avg_night_waking_count: Optional[float] = None
+    avg_awake_at_night_minutes: Optional[float] = None
     avg_nap_count: Optional[float] = None
     avg_total_nap_minutes: Optional[float] = None
     avg_nap_length_minutes: Optional[float] = None

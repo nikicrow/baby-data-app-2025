@@ -37,6 +37,8 @@ _WEEKLY_QUERY = text(f"""
         count(*) as days_in_week,
         round(avg(night_sleep_minutes), 1) as avg_night_sleep_minutes,
         round(avg(longest_night_stretch_minutes), 1) as avg_longest_night_stretch_minutes,
+        round(avg(night_waking_count), 1) as avg_night_waking_count,
+        round(avg(awake_at_night_minutes), 1) as avg_awake_at_night_minutes,
         round(avg(nap_count), 1) as avg_nap_count,
         round(avg(total_nap_minutes), 1) as avg_total_nap_minutes,
         round(avg(avg_nap_minutes), 1) as avg_nap_length_minutes,
