@@ -16,7 +16,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  ComposedChart
+  ComposedChart,
+  Legend
 } from 'recharts';
 import { Baby, Clock, TrendingUp, Droplets, Zap, Timer } from "lucide-react";
 import { feedingApi } from "../../services/api";
@@ -304,6 +305,7 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
                 <XAxis dataKey="time" />
                 <YAxis yAxisId="duration" orientation="left" />
                 <YAxis yAxisId="efficiency" orientation="right" />
+                <Legend />
                 <Bar yAxisId="duration" dataKey="avgDuration" fill="#8884d8" name="Duration (min)" />
                 <Line yAxisId="efficiency" type="monotone" dataKey="efficiency" stroke="#82ca9d" strokeWidth={2} name="Efficiency %" />
               </ComposedChart>
@@ -323,6 +325,7 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
                 <XAxis dataKey="date" />
                 <YAxis yAxisId="feeds" orientation="left" />
                 <YAxis yAxisId="volume" orientation="right" />
+                <Legend />
                 <Bar yAxisId="feeds" dataKey="breastFeeds" stackId="a" fill="#8884d8" name="Breast" />
                 <Bar yAxisId="feeds" dataKey="bottleFeeds" stackId="a" fill="#82ca9d" name="Bottle" />
                 <Bar yAxisId="feeds" dataKey="pumpSessions" stackId="a" fill="#ffc658" name="Pump" />
@@ -345,7 +348,8 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="interval" />
               <YAxis />
-              <Bar dataKey="count" fill="#8884d8" />
+              <Legend />
+              <Bar dataKey="count" fill="#8884d8" name="Feed intervals" />
             </BarChart>
           </ResponsiveContainer>
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -382,6 +386,7 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
             <div className="mt-4 grid grid-cols-2 gap-4">
@@ -406,6 +411,7 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="week" />
                 <YAxis />
+                <Legend />
                 <Line type="monotone" dataKey="avgBottle" stroke="#8884d8" strokeWidth={2} name="Avg Bottle (ml)" />
                 <Line type="monotone" dataKey="pumpOutput" stroke="#82ca9d" strokeWidth={2} name="Pump Output (ml)" />
               </LineChart>
@@ -442,6 +448,7 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="timeRange" />
               <YAxis />
+              <Legend />
               <Bar
                 dataKey="frequency"
                 fill={(data) => data.isCluster ? "#ff7c7c" : "#8884d8"}

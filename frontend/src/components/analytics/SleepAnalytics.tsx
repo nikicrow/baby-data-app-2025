@@ -16,7 +16,9 @@ import {
   PieChart,
   Pie,
   Cell,
-  ComposedChart
+  ComposedChart,
+  Tooltip,
+  Legend
 } from 'recharts';
 import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing } from "lucide-react";
 import { sleepApi, analyticsApi } from "../../services/api";
@@ -126,6 +128,34 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
       wakeUps,
     };
   });
+
+  const nightlyInsightsData = Array.from({ length: 14 }, (_, i) => {
+    const date = subDays(now, 13 - i);
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const metrics = dailyMetrics.find((row) => row.metric_date === dateKey);
+
+    return {
+      date: format(date, 'MMM d'),
+      longestStretch: metrics?.longest_night_stretch_minutes != null
+        ? Math.round((metrics.longest_night_stretch_minutes / 60) * 10) / 10
+        : null,
+      nightWakings: metrics?.night_sleep_segments != null
+        ? Math.max(metrics.night_sleep_segments - 1, 0)
+        : null,
+    };
+  });
+
+  const nightsWithInsights = nightlyInsightsData.filter(
+    (night) => night.longestStretch != null || night.nightWakings != null
+  );
+  const averageLongestStretch = nightsWithInsights.filter((night) => night.longestStretch != null).reduce(
+    (sum, night) => sum + (night.longestStretch ?? 0),
+    0
+  ) / nightsWithInsights.filter((night) => night.longestStretch != null).length || 0;
+  const averageNightWakings = nightsWithInsights.filter((night) => night.nightWakings != null).reduce(
+    (sum, night) => sum + (night.nightWakings ?? 0),
+    0
+  ) / nightsWithInsights.filter((night) => night.nightWakings != null).length || 0;
 
   // Sleep patterns by time of day
   const getSleepsByTimeOfDay = (hour: number, label: string, type: string) => {
@@ -418,6 +448,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
+                  <Tooltip />
+                  <Legend />
                   <Bar dataKey="nightSleep" stackId="a" fill="#8884d8" name="Night Sleep" />
                   <Bar dataKey="napTotal" stackId="a" fill="#82ca9d" name="Naps" />
                   <Line type="monotone" dataKey="wakeUps" stroke="#ff7c7c" strokeWidth={2} name="Wake Ups" />
@@ -444,6 +476,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <XAxis dataKey="time" />
                   <YAxis yAxisId="duration" orientation="left" />
                   <YAxis yAxisId="quality" orientation="right" />
+                  <Tooltip />
+                  <Legend />
                   <Bar yAxisId="duration" dataKey="duration" fill="#8884d8" name="Duration (hours)" />
                   <Line yAxisId="quality" type="monotone" dataKey="quality" stroke="#82ca9d" strokeWidth={2} name="Quality %" />
                 </BarChart>
@@ -531,6 +565,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="timeOfDay" />
                   <YAxis />
+                  <Tooltip />
+                  <Legend />
                   <Bar dataKey="avgWindow" fill="#8884d8" name="Actual" />
                   <Bar dataKey="recommended" fill="#82ca9d" opacity={0.6} name="Recommended" />
                 </BarChart>
@@ -584,6 +620,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
+                    <Tooltip />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
                 {bestLocation && (
@@ -615,6 +653,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="week" />
                     <YAxis />
+                    <Tooltip />
+                    <Legend />
                     <Area
                       type="monotone"
                       dataKey="efficiency"

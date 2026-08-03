@@ -14,7 +14,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  ComposedChart
+  ComposedChart,
+  Legend
 } from 'recharts';
 import { Droplets, Clock, TrendingUp, Baby, Zap, AlertTriangle } from "lucide-react";
 import { diaperApi, feedingApi } from "../../services/api";
@@ -347,6 +348,7 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="time" />
                   <YAxis />
+                  <Legend />
                   <Bar dataKey="wet" stackId="a" fill="#8884d8" name="Wet" />
                   <Bar dataKey="poopy" stackId="a" fill="#82ca9d" name="Poopy" />
                   <Bar dataKey="both" stackId="a" fill="#ffc658" name="Both" />
@@ -373,6 +375,7 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                   <XAxis dataKey="date" />
                   <YAxis yAxisId="count" orientation="left" />
                   <YAxis yAxisId="interval" orientation="right" />
+                  <Legend />
                   <Bar yAxisId="count" dataKey="total" fill="#8884d8" name="Total Changes" />
                   <Line yAxisId="interval" type="monotone" dataKey="avgInterval" stroke="#ff7c7c" strokeWidth={2} name="Avg Interval (h)" />
                 </ComposedChart>
@@ -410,6 +413,7 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 grid grid-cols-3 gap-2">
@@ -442,7 +446,8 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="interval" />
                     <YAxis />
-                    <Bar dataKey="count" fill="#8884d8" />
+                    <Legend />
+                    <Bar dataKey="count" fill="#8884d8" name="Changes" />
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">
@@ -479,6 +484,7 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="hour" label={{ value: 'Hours after feed', position: 'insideBottom', offset: -10 }} />
                   <YAxis />
+                  <Legend />
                   <Bar dataKey="feeds" fill="#8884d8" name="Feeds" />
                   <Line type="monotone" dataKey="nappies" stroke="#82ca9d" strokeWidth={3} name="Expected Nappies" />
                 </ComposedChart>
@@ -512,6 +518,7 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="week" />
                   <YAxis />
+                  <Legend />
                   <Line type="monotone" dataKey="hydration" stroke="#8884d8" strokeWidth={2} name="Hydration %" />
                   <Line type="monotone" dataKey="digestiveHealth" stroke="#82ca9d" strokeWidth={2} name="Digestive Health %" />
                   <Line type="monotone" dataKey="frequency" stroke="#ffc658" strokeWidth={2} name="Daily Frequency" />
