@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 from pydantic import PostgresDsn, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     # CORS origins for frontend
-    BACKEND_CORS_ORIGINS: List[str] = [
+    # Prevent pydantic-settings from JSON-decoding this value before our
+    # validator handles the comma-separated format used in .env files.
+    BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = [
         "http://localhost:3000",  # React dev server (default)
         "http://localhost:3001",  # React feature branch server (alternate port)
         "http://localhost:8000",  # FastAPI dev server

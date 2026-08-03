@@ -231,6 +231,8 @@ export interface WeeklyMetricsRow {
   days_in_week: number;
   avg_night_sleep_minutes: number | null;
   avg_longest_night_stretch_minutes: number | null;
+  avg_night_waking_count: number | null;
+  avg_awake_at_night_minutes: number | null;
   avg_nap_count: number | null;
   avg_total_nap_minutes: number | null;
   avg_nap_length_minutes: number | null;
@@ -250,6 +252,8 @@ export interface DailyMetricsRow {
   night_sleep_minutes: number;
   night_sleep_segments: number | null;
   longest_night_stretch_minutes: number | null;
+  night_waking_count: number | null;
+  awake_at_night_minutes: number | null;
   nap_count: number;
   total_nap_minutes: number;
   avg_nap_minutes: number | null;
