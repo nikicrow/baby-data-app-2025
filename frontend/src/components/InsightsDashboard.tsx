@@ -17,7 +17,8 @@ import {
   Pie,
   Cell,
   ScatterChart,
-  Scatter
+  Scatter,
+  Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
 import { SleepAnalytics } from "./analytics/SleepAnalytics";
@@ -402,7 +403,8 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis />
-                <Bar dataKey="feeds" fill="#8884d8" radius={4} />
+                <Legend />
+                <Bar dataKey="feeds" fill="#8884d8" radius={4} name="Feeds" />
               </BarChart>
             </ResponsiveContainer>
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
@@ -424,6 +426,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="time" />
                 <YAxis />
+                <Legend />
                 <Line 
                   type="monotone" 
                   dataKey="duration" 
@@ -479,6 +482,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex justify-center gap-4 mt-4">
@@ -508,6 +512,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                 <XAxis dataKey="week" />
                 <YAxis yAxisId="weight" orientation="left" />
                 <YAxis yAxisId="height" orientation="right" />
+                <Legend />
                 <Line 
                   yAxisId="weight"
                   type="monotone" 
@@ -558,7 +563,8 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="feeds" name="Feeds" />
               <YAxis dataKey="nappies" name="Nappies" />
-              <Scatter fill="#8884d8" />
+              <Legend />
+              <Scatter fill="#8884d8" name="Feeds vs nappies" />
             </ScatterChart>
           </ResponsiveContainer>
           <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">

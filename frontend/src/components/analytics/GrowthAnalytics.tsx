@@ -12,7 +12,8 @@ import {
   LineChart,
   Line,
   ComposedChart,
-  ReferenceLine
+  ReferenceLine,
+  Legend
 } from 'recharts';
 import { Scale, TrendingUp, Target, Baby, Zap, Award } from "lucide-react";
 import { growthApi, feedingApi } from "../../services/api";
@@ -310,6 +311,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <XAxis dataKey="date" />
                   <YAxis yAxisId="weight" orientation="left" label={{ value: 'Weight (kg)', angle: -90, position: 'insideLeft' }} />
                   <YAxis yAxisId="height" orientation="right" label={{ value: 'Height (cm)', angle: 90, position: 'insideRight' }} />
+                  <Legend />
                   <Line yAxisId="weight" type="monotone" dataKey="weight" stroke="#8884d8" strokeWidth={3} name="Weight" />
                   <Line yAxisId="height" type="monotone" dataKey="height" stroke="#82ca9d" strokeWidth={3} name="Height" />
                   {birthWeight > 0 && <ReferenceLine yAxisId="weight" y={birthWeight} stroke="#ff7c7c" strokeDasharray="5 5" label="Birth Weight" />}
@@ -335,6 +337,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="age" label={{ value: 'Age (weeks)', position: 'insideBottom', offset: -10 }} />
                   <YAxis label={{ value: 'Percentile', angle: -90, position: 'insideLeft' }} />
+                  <Legend />
                   <Line type="monotone" dataKey="weightPercentile" stroke="#8884d8" strokeWidth={2} name="Weight %ile" />
                   <Line type="monotone" dataKey="heightPercentile" stroke="#82ca9d" strokeWidth={2} name="Height %ile" />
                   <ReferenceLine y={50} stroke="#ffc658" strokeDasharray="5 5" label="50th Percentile" />
@@ -365,6 +368,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                     <XAxis dataKey="period" />
                     <YAxis yAxisId="weight" orientation="left" />
                     <YAxis yAxisId="height" orientation="right" />
+                    <Legend />
                     <Bar yAxisId="weight" dataKey="weightGain" fill="#8884d8" name="Weight Gain (g)" />
                     <Line yAxisId="height" type="monotone" dataKey="heightGain" stroke="#82ca9d" strokeWidth={2} name="Height Gain (cm)" />
                   </BarChart>
@@ -401,6 +405,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="measurement" />
                     <YAxis />
+                    <Legend />
                     <Bar dataKey="birth" fill="#e5e7eb" name="Birth Percentile" />
                     <Bar dataKey="current" fill="#8884d8" name="Current Percentile" />
                     <ReferenceLine y={50} stroke="#ffc658" strokeDasharray="5 5" />
@@ -444,6 +449,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <XAxis dataKey="week" label={{ value: 'Week', position: 'insideBottom', offset: -10 }} />
                   <YAxis yAxisId="intake" orientation="left" label={{ value: 'Daily Intake (ml)', angle: -90, position: 'insideLeft' }} />
                   <YAxis yAxisId="weight" orientation="right" label={{ value: 'Weight Gain (g)', angle: 90, position: 'insideRight' }} />
+                  <Legend />
                   <Bar yAxisId="intake" dataKey="dailyIntake" fill="#8884d8" name="Daily Intake" />
                   <Line yAxisId="weight" type="monotone" dataKey="weightGain" stroke="#82ca9d" strokeWidth={3} name="Weight Gain" />
                 </ComposedChart>
@@ -528,6 +534,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                     <XAxis dataKey="month" />
                     <YAxis yAxisId="weight" orientation="left" />
                     <YAxis yAxisId="height" orientation="right" />
+                    <Legend />
                     <Line yAxisId="weight" type="monotone" dataKey="projectedWeight" stroke="#8884d8" strokeWidth={2} strokeDasharray="5 5" name="Projected Weight" />
                     <Line yAxisId="height" type="monotone" dataKey="projectedHeight" stroke="#82ca9d" strokeWidth={2} strokeDasharray="5 5" name="Projected Height" />
                   </LineChart>
