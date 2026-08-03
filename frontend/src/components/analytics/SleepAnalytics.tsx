@@ -16,11 +16,13 @@ import {
   PieChart,
   Pie,
   Cell,
-  ComposedChart
+  ComposedChart,
+  Tooltip,
+  Legend
 } from 'recharts';
 import { Moon, Clock, TrendingUp, Target, Zap, Sun } from "lucide-react";
-import { sleepApi } from "../../services/api";
-import type { SleepSession } from "../../types/api";
+import { analyticsApi, sleepApi } from "../../services/api";
+import type { DailyMetricsRow, SleepSession } from "../../types/api";
 import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
 
 interface SleepAnalyticsProps {
@@ -32,6 +34,7 @@ interface SleepAnalyticsProps {
 
 export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepAnalyticsProps) {
   const [sleeps, setSleeps] = useState<SleepSession[]>([]);
+  const [dailyMetrics, setDailyMetrics] = useState<DailyMetricsRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,8 +44,15 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
   const fetchSleeps = async () => {
     try {
       setLoading(true);
-      const data = await sleepApi.getAll({ baby_id: babyId, limit: 2000 });
-      setSleeps(data);
+      const [sleepData, metricsData] = await Promise.all([
+        sleepApi.getAll({ baby_id: babyId, limit: 2000 }),
+        analyticsApi.getDailyMetrics(babyId).catch((error) => {
+          console.warn('Daily sleep insights are unavailable:', error);
+          return [];
+        }),
+      ]);
+      setSleeps(sleepData);
+      setDailyMetrics(metricsData);
     } catch (error) {
       console.error('Failed to fetch sleep data:', error);
     } finally {
@@ -88,6 +98,34 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
       wakeUps,
     };
   });
+
+  const nightlyInsightsData = Array.from({ length: 14 }, (_, i) => {
+    const date = subDays(now, 13 - i);
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const metrics = dailyMetrics.find((row) => row.metric_date === dateKey);
+
+    return {
+      date: format(date, 'MMM d'),
+      longestStretch: metrics?.longest_night_stretch_minutes != null
+        ? Math.round((metrics.longest_night_stretch_minutes / 60) * 10) / 10
+        : null,
+      nightWakings: metrics?.night_sleep_segments != null
+        ? Math.max(metrics.night_sleep_segments - 1, 0)
+        : null,
+    };
+  });
+
+  const nightsWithInsights = nightlyInsightsData.filter(
+    (night) => night.longestStretch != null || night.nightWakings != null
+  );
+  const averageLongestStretch = nightsWithInsights.filter((night) => night.longestStretch != null).reduce(
+    (sum, night) => sum + (night.longestStretch ?? 0),
+    0
+  ) / nightsWithInsights.filter((night) => night.longestStretch != null).length || 0;
+  const averageNightWakings = nightsWithInsights.filter((night) => night.nightWakings != null).reduce(
+    (sum, night) => sum + (night.nightWakings ?? 0),
+    0
+  ) / nightsWithInsights.filter((night) => night.nightWakings != null).length || 0;
 
   // Sleep patterns by time of day
   const getSleepsByTimeOfDay = (hour: number, label: string, type: string) => {
@@ -380,6 +418,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
+                  <Tooltip />
+                  <Legend />
                   <Bar dataKey="nightSleep" stackId="a" fill="#8884d8" name="Night Sleep" />
                   <Bar dataKey="napTotal" stackId="a" fill="#82ca9d" name="Naps" />
                   <Line type="monotone" dataKey="wakeUps" stroke="#ff7c7c" strokeWidth={2} name="Wake Ups" />
@@ -406,6 +446,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <XAxis dataKey="time" />
                   <YAxis yAxisId="duration" orientation="left" />
                   <YAxis yAxisId="quality" orientation="right" />
+                  <Tooltip />
+                  <Legend />
                   <Bar yAxisId="duration" dataKey="duration" fill="#8884d8" name="Duration (hours)" />
                   <Line yAxisId="quality" type="monotone" dataKey="quality" stroke="#82ca9d" strokeWidth={2} name="Quality %" />
                 </BarChart>
@@ -418,6 +460,45 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Night Wakings & Longest Sleep</CardTitle>
+          <CardDescription>Nightly interruptions and the longest uninterrupted stretch over the last 14 days</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {nightsWithInsights.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={nightlyInsightsData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis yAxisId="hours" label={{ value: 'Hours', angle: -90, position: 'insideLeft' }} />
+                  <YAxis yAxisId="wakings" orientation="right" allowDecimals={false} label={{ value: 'Wakings', angle: 90, position: 'insideRight' }} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar yAxisId="hours" dataKey="longestStretch" fill="#8884d8" name="Longest sleep (hours)" />
+                  <Line yAxisId="wakings" type="monotone" dataKey="nightWakings" stroke="#ff7c7c" strokeWidth={2} name="Night wakings" connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="rounded-lg bg-purple-50 p-3 text-center">
+                  <p className="text-sm text-muted-foreground">Average longest stretch</p>
+                  <p className="text-xl font-semibold">{averageLongestStretch.toFixed(1)}h</p>
+                </div>
+                <div className="rounded-lg bg-orange-50 p-3 text-center">
+                  <p className="text-sm text-muted-foreground">Average night wakings</p>
+                  <p className="text-xl font-semibold">{averageNightWakings.toFixed(1)}</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              No nightly insight data available for the last 14 days
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Wake Windows Analysis */}
       <Card>
@@ -433,6 +514,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="timeOfDay" />
                   <YAxis />
+                  <Tooltip />
+                  <Legend />
                   <Bar dataKey="avgWindow" fill="#8884d8" name="Actual" />
                   <Bar dataKey="recommended" fill="#82ca9d" opacity={0.6} name="Recommended" />
                 </BarChart>
@@ -486,6 +569,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
+                    <Tooltip />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
                 {bestLocation && (
@@ -517,6 +602,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="week" />
                     <YAxis />
+                    <Tooltip />
+                    <Legend />
                     <Area
                       type="monotone"
                       dataKey="efficiency"
