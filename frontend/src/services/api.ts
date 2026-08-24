@@ -20,7 +20,10 @@ import type {
 } from '../types/api';
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Empty means same-origin: the deployed build is served by FastAPI itself,
+// so requests go to the page's own host. `??` (not `||`) is what lets an
+// empty VITE_API_URL mean "relative" instead of falling back to localhost.
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
