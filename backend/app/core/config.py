@@ -1,3 +1,4 @@
+import json
 from typing import Annotated, Any, Dict, List, Optional
 from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, NoDecode
@@ -45,11 +46,22 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> List[str]:
         if isinstance(v, str):
-            # Handle comma-separated string from .env
-            return [i.strip() for i in v.split(",")]
+            # Support both JSON arrays and comma-separated values in .env files.
+            value = v.strip()
+            if value.startswith("["):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Invalid JSON array for BACKEND_CORS_ORIGINS") from exc
+            else:
+                value = value.split(",")
+
+            if not isinstance(value, list):
+                raise ValueError("BACKEND_CORS_ORIGINS must be a list of origins")
+            return [origin.strip().rstrip("/") for origin in value if origin.strip()]
         if isinstance(v, list):
             # Already a list (from default or elsewhere)
-            return v
+            return [origin.strip().rstrip("/") for origin in v if origin.strip()]
         raise ValueError(f"Invalid CORS origins format: {v}")
 
 
