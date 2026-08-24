@@ -1,7 +1,11 @@
 import json
+from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, NoDecode
+
+# backend/app/core/config.py -> repo root
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -31,6 +35,10 @@ class Settings(BaseSettings):
     
     # Timezone
     TIMEZONE: str = "Australia/Sydney"
+
+    # Built frontend bundle. When present, the API serves the SPA from the same
+    # origin, so a Tailscale deployment needs one URL and no CORS entry.
+    FRONTEND_DIST: Path = REPO_ROOT / "frontend" / "build"
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
