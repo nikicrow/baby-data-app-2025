@@ -15,6 +15,40 @@ import { babyApi, feedingApi, sleepApi, diaperApi, growthApi } from "./services/
 import type { BabyProfile } from "./types/api";
 import { toast } from "sonner@2.0.3";
 
+// Which baby the app opens on.
+//
+// Previously this was `find(b => b.is_active) || babies[0]`, which meant the
+// oldest profile won whenever more than one was active -- the app always
+// opened on Ember even though the day-to-day tracking is Imogen. Rather than
+// hardcode a name, prefer whoever was last chosen on this device, and fall
+// back to the youngest baby, who is the one still being tracked.
+const LAST_BABY_KEY = 'babytracker.lastBabyId';
+
+function rememberBaby(babyId: string) {
+  try {
+    localStorage.setItem(LAST_BABY_KEY, babyId);
+  } catch {
+    // Private mode or blocked storage -- the fallback below still applies.
+  }
+}
+
+function pickDefaultBaby(babies: BabyProfile[]): BabyProfile {
+  const active = babies.filter(b => b.is_active);
+  const choices = active.length > 0 ? active : babies;
+
+  try {
+    const lastId = localStorage.getItem(LAST_BABY_KEY);
+    const remembered = lastId && choices.find(b => b.id === lastId);
+    if (remembered) return remembered;
+  } catch {
+    // Ignore and fall through to the youngest.
+  }
+
+  return choices.reduce((youngest, b) =>
+    b.date_of_birth > youngest.date_of_birth ? b : youngest
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,9 +74,7 @@ export default function App() {
 
       if (existingBabies.length > 0) {
         setBabies(existingBabies);
-        // Use the first active baby
-        const activeBaby = existingBabies.find(b => b.is_active) || existingBabies[0];
-        setCurrentBaby(activeBaby);
+        setCurrentBaby(pickDefaultBaby(existingBabies));
       } else {
         // Create a default baby profile for testing
         const newBaby = await babyApi.create({
@@ -66,6 +98,7 @@ export default function App() {
     const selected = babies.find(b => b.id === babyId);
     if (selected) {
       setCurrentBaby(selected);
+      rememberBaby(selected.id);
     }
   };
 
