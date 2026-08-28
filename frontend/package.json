@@ -1,5 +1,5 @@
 {
-      "name": "Baby Care Data Logger",
+      "name": "crows-baby-tracker",
       "version": "0.1.0",
       "private": true,
       "dependencies": {

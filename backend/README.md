@@ -1,4 +1,4 @@
-# Baby Data API
+# Crow's Baby Tracker API
 
 Modern baby data tracking API built with FastAPI.
 
