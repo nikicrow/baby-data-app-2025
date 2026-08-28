@@ -133,7 +133,7 @@ export default function App() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Baby className="w-12 h-12 animate-pulse mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading BabyTracker...</p>
+          <p className="text-muted-foreground">Loading Crow's Baby Tracker...</p>
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ export default function App() {
           <div className="bg-primary text-primary-foreground p-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
               <Baby className="w-8 h-8" />
-              <h1 className="text-2xl font-bold">BabyTracker</h1>
+              <h1 className="text-2xl font-bold">Crow's Baby Tracker</h1>
             </div>
             {babySwitcher ? (
               <div className="flex items-center justify-center gap-2">
@@ -231,7 +231,7 @@ export default function App() {
             <div className="flex items-center gap-3 mb-2">
               <Baby className="w-8 h-8" />
               <div>
-                <h1 className="text-xl font-bold">BabyTracker</h1>
+                <h1 className="text-xl font-bold">Crow's Baby Tracker</h1>
                 {babySwitcher ? (
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-primary-foreground/80 text-sm">Tracking</span>

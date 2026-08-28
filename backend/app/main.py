@@ -12,16 +12,19 @@ from app.api import analytics, babies, feeding, sleep, diaper, growth, health
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Baby Data API",
+    title="Crow's Baby Tracker API",
     description="Modern baby data tracking API built with FastAPI",
     version="0.1.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
-# CORS middleware for frontend integration
+# CORS middleware for frontend integration.
+# Same-origin Tailscale serving does not need CORS, but keep MagicDNS hosts
+# allowed so a phone/laptop hitting the API from another origin still works.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.ts\.net(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,7 +34,7 @@ app.add_middleware(
 # banner lives under the API prefix.
 @app.get(f"{settings.API_V1_STR}/")
 async def root():
-    return {"message": "Baby Data API - Ready to track your little one's data! 👶"}
+    return {"message": "Crow's Baby Tracker API - Ready to track your little one's data! 👶"}
 
 @app.get("/health")
 async def health_check():
