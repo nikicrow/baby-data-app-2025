@@ -1,6 +1,6 @@
 {
   "name": "Crow's Baby Tracker",
-  "short_name": "Crow's Tracker",
+  "short_name": "Crow's Baby Tracker",
   "description": "Log feeds, sleep and nappies, and see the daily metrics built by the dbt pipeline.",
   "start_url": "/",
   "scope": "/",
