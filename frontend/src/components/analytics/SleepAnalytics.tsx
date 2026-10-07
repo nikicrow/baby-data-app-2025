@@ -24,6 +24,7 @@ import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing } from "lucide-reac
 import { sleepApi, analyticsApi } from "../../services/api";
 import type { SleepSession, DailyMetricsRow } from "../../types/api";
 import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
+import { SleepTimeline } from "./SleepTimeline";
 
 interface SleepAnalyticsProps {
   babyId: string;
@@ -353,6 +354,8 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
 
   return (
     <div className="space-y-6">
+      <SleepTimeline sleeps={sleeps} referenceDate={now} />
+
       {/* Key Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
