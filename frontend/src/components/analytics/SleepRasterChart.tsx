@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
 import type { SleepSession } from '../../types/api';
+import { Button } from '../ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface SleepRasterChartProps {
   sleeps: SleepSession[];
@@ -40,6 +42,13 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hoveredDay, setHoveredDay] = useState<number | null>(null);
+  const [range, setRange] = useState<0 | 28 | 7>(0);
+  const [daysBack, setDaysBack] = useState(0);
+
+  useEffect(() => {
+    setDaysBack(0);
+    setHoveredDay(null);
+  }, [sleeps, dateOfBirth]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -123,13 +132,25 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
     );
   }
 
-  const svgWidth = Math.max(width, 320);
+  const visibleCount = range === 0 ? dayCount : Math.min(range, dayCount);
+  const maxDaysBack = dayCount - visibleCount;
+  const offset = range === 0 ? 0 : Math.min(daysBack, maxDaysBack);
+  const firstVisible = dayCount - offset - visibleCount;
+  const endVisible = firstVisible + visibleCount;
+  const visibleDays = days.slice(firstVisible, endVisible);
+  const visibleSegments = segments.filter((s) => s.dayIndex >= firstVisible && s.dayIndex < endVisible);
+  const browse = (direction: number) => {
+    setDaysBack(Math.max(0, Math.min(maxDaysBack, offset + direction * range)));
+    setHoveredDay(null);
+  };
+
+  const svgWidth = width > 0 ? width : 320;
   const plotWidth = Math.max(svgWidth - MARGIN.left - MARGIN.right, 10);
   const plotHeight = Math.max(height - MARGIN.top - MARGIN.bottom, 10);
-  const colWidth = plotWidth / dayCount;
+  const colWidth = plotWidth / visibleCount;
   const barWidth = Math.max(colWidth * 0.9, 1);
 
-  const xFor = (dayIndex: number) => MARGIN.left + dayIndex * colWidth;
+  const xFor = (dayIndex: number) => MARGIN.left + (dayIndex - firstVisible) * colWidth;
   const yFor = (minute: number) => MARGIN.top + plotHeight * (1 - minute / MINUTES_PER_DAY);
 
   // Hourly labels get cramped on a phone — thin them out as the chart shrinks.
@@ -141,15 +162,17 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
     dobDay ? differenceInCalendarDays(days[dayIndex].date, dobDay) : null;
 
   // One label per fortnight, spaced further apart when there isn't room.
-  const weekStep = plotWidth / Math.max(dayCount / 7, 1) < 26 ? 4 : 2;
-  const xTicks = days
+  const weekStep = plotWidth / Math.max(visibleCount / 7, 1) < 26 ? 4 : 2;
+  const xTicks = visibleDays
     .filter((d) => {
+      if (range === 7) return true;
+      if (range === 28) return (d.dayIndex - firstVisible) % 7 === 0;
       const offset = ageDaysAt(d.dayIndex) ?? d.dayIndex;
       return offset >= 0 && offset % (weekStep * 7) === 0;
     })
     .map((d) => ({
       dayIndex: d.dayIndex,
-      label: dobDay ? `${Math.round((ageDaysAt(d.dayIndex) ?? 0) / 7)}` : format(d.date, 'd MMM'),
+      label: range !== 0 ? format(d.date, 'd MMM') : dobDay ? `${Math.round((ageDaysAt(d.dayIndex) ?? 0) / 7)}` : format(d.date, 'd MMM'),
     }));
 
   const hovered = hoveredDay !== null ? days[hoveredDay] : null;
@@ -159,6 +182,34 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
     : 0;
 
   return (
+    <div className="space-y-3">
+      <div className="flex gap-2" role="group" aria-label="Sleep chart range">
+        {([{ value: 0, label: 'All time' }, { value: 28, label: '4 weeks' }, { value: 7, label: '1 week' }] as const).map((option) => (
+          <Button
+            key={option.value}
+            type="button"
+            size="sm"
+            variant={range === option.value ? 'default' : 'outline'}
+            aria-pressed={range === option.value}
+            onClick={() => { setRange(option.value); setDaysBack(0); setHoveredDay(null); }}
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
+      {range !== 0 && (
+        <div className="flex items-center justify-between gap-2">
+          <Button type="button" size="icon" variant="outline" aria-label="Previous period" disabled={offset >= maxDaysBack} onClick={() => browse(1)}>
+            <ChevronLeft />
+          </Button>
+          <p className="text-center text-xs text-muted-foreground" aria-live="polite">
+            {format(visibleDays[0].date, 'd MMM yyyy')} – {format(visibleDays[visibleCount - 1].date, 'd MMM yyyy')}
+          </p>
+          <Button type="button" size="icon" variant="outline" aria-label="Next period" disabled={offset === 0} onClick={() => browse(-1)}>
+            <ChevronRight />
+          </Button>
+        </div>
+      )}
     <div ref={containerRef} className="relative w-full">
       <svg
         width="100%"
@@ -202,7 +253,7 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
         ))}
 
         {/* Asleep blocks */}
-        {segments.map((seg, i) => (
+        {visibleSegments.map((seg, i) => (
           <rect
             key={i}
             x={xFor(seg.dayIndex)}
@@ -246,11 +297,11 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
           fontSize={11}
           fill="currentColor"
         >
-          {dobDay ? 'Age (weeks)' : 'Date'}
+          {range === 0 && dobDay ? 'Age (weeks)' : 'Date'}
         </text>
 
         {/* Invisible hit targets, one per day */}
-        {days.map((day) => (
+        {visibleDays.map((day) => (
           <rect
             key={day.dayIndex}
             x={xFor(day.dayIndex)}
@@ -259,6 +310,7 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
             height={plotHeight}
             fill="transparent"
             onMouseEnter={() => setHoveredDay(day.dayIndex)}
+            onClick={() => setHoveredDay(day.dayIndex)}
           />
         ))}
       </svg>
@@ -280,6 +332,7 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
           </p>
         </div>
       )}
+    </div>
     </div>
   );
 }
