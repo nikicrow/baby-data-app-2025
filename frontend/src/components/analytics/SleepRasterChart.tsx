@@ -204,6 +204,11 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
           </Button>
           <p className="text-center text-xs text-muted-foreground" aria-live="polite">
             {format(visibleDays[0].date, 'd MMM yyyy')} – {format(visibleDays[visibleCount - 1].date, 'd MMM yyyy')}
+            {dobDay && (
+              <span className="block">
+                {Math.floor(ageDaysAt(firstVisible)! / 7)}–{Math.floor(ageDaysAt(endVisible - 1)! / 7)} weeks old
+              </span>
+            )}
           </p>
           <Button type="button" size="icon" variant="outline" aria-label="Next period" disabled={offset === 0} onClick={() => browse(-1)}>
             <ChevronRight />
