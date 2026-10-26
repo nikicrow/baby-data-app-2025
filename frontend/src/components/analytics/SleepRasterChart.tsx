@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
-import type { SleepSession } from '../../types/api';
+import type { SleepSession, FeedingSession } from '../../types/api';
+import { feedingApi } from '../../services/api';
 import { Button } from '../ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface SleepRasterChartProps {
+  babyId: string;
+  refreshTrigger?: number;
   sleeps: SleepSession[];
   /** Baby's DOB — drives the "age in weeks" x-axis. Falls back to dates when absent. */
   dateOfBirth?: string;
@@ -28,6 +31,7 @@ interface DaySummary {
 
 const MINUTES_PER_DAY = 24 * 60;
 const SLEEP_FILL = '#4c72b0';
+const FEED_FILL = '#d97706';
 const MARGIN = { top: 8, right: 12, bottom: 38, left: 46 };
 
 /** Keep a minute-of-day inside the plotted 24h even on 23/25-hour DST days. */
@@ -38,12 +42,44 @@ const clampMinute = (minute: number) => Math.min(Math.max(minute, 0), MINUTES_PE
  * day running up the y-axis, a blue block wherever she was asleep. Sessions
  * that cross midnight are split so each block stays inside its own column.
  */
-export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRasterChartProps) {
+export function SleepRasterChart({ babyId, refreshTrigger, sleeps, dateOfBirth, height = 420 }: SleepRasterChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hoveredDay, setHoveredDay] = useState<number | null>(null);
   const [range, setRange] = useState<0 | 28 | 7>(0);
   const [daysBack, setDaysBack] = useState(0);
+  const [showFeeds, setShowFeeds] = useState(false);
+  const [feeds, setFeeds] = useState<FeedingSession[]>([]);
+  const [feedsLoading, setFeedsLoading] = useState(false);
+  const [feedsError, setFeedsError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFeeds([]);
+    setFeedsError(false);
+    setFeedsLoading(showFeeds);
+    if (showFeeds) {
+      const loadFeeds = async () => {
+        try {
+          const allFeeds: FeedingSession[] = [];
+          const pageSize = 1000;
+          while (!cancelled) {
+            const page = await feedingApi.getAll({ baby_id: babyId, skip: allFeeds.length, limit: pageSize });
+            if (cancelled) return;
+            allFeeds.push(...page);
+            if (page.length < pageSize) break;
+          }
+          if (!cancelled) setFeeds(allFeeds);
+        } catch {
+          if (!cancelled) setFeedsError(true);
+        } finally {
+          if (!cancelled) setFeedsLoading(false);
+        }
+      };
+      loadFeeds();
+    }
+    return () => { cancelled = true; };
+  }, [babyId, refreshTrigger, showFeeds]);
 
   useEffect(() => {
     setDaysBack(0);
@@ -124,6 +160,41 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
     return { segments: built, days: summaries, dayCount: totalDays };
   }, [sleeps, dateOfBirth]);
 
+  const { feedSegments, feedCounts } = useMemo(() => {
+    const built: Segment[] = [];
+    const counts = new Map<number, number>();
+    if (!days.length) return { feedSegments: built, feedCounts: counts };
+    const origin = days[0].date;
+    feeds.forEach((feed) => {
+      const start = parseISO(feed.start_time);
+      if (!Number.isFinite(start.getTime())) return;
+      const dayIndex = differenceInCalendarDays(startOfDay(start), origin);
+      counts.set(dayIndex, (counts.get(dayIndex) ?? 0) + 1);
+      const duration = feed.duration_minutes ?? ((feed.left_breast_duration ?? 0) + (feed.right_breast_duration ?? 0));
+      const end = feed.end_time ? parseISO(feed.end_time) : new Date(start.getTime() + duration * 60000);
+      if (!Number.isFinite(end.getTime()) || end <= start) {
+        // Feeds without a duration are markers at their recorded start time.
+        const minute = clampMinute((start.getTime() - startOfDay(start).getTime()) / 60000);
+        built.push({ dayIndex, startMinute: minute, endMinute: minute });
+        return;
+      }
+      let cursor = start;
+      while (cursor < end) {
+        const dayStart = startOfDay(cursor);
+        const midnight = startOfDay(addDays(dayStart, 1));
+        const chunkEnd = end < midnight ? end : midnight;
+        if (chunkEnd <= cursor) break;
+        built.push({
+          dayIndex: differenceInCalendarDays(dayStart, origin),
+          startMinute: clampMinute((cursor.getTime() - dayStart.getTime()) / 60000),
+          endMinute: clampMinute((chunkEnd.getTime() - dayStart.getTime()) / 60000),
+        });
+        cursor = chunkEnd;
+      }
+    });
+    return { feedSegments: built, feedCounts: counts };
+  }, [feeds, days]);
+
   if (dayCount === 0) {
     return (
       <div className="flex items-center justify-center text-muted-foreground" style={{ height }}>
@@ -197,6 +268,21 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
           </Button>
         ))}
       </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+          <input type="checkbox" checked={showFeeds} onChange={(event) => setShowFeeds(event.target.checked)} />
+          Overlay feeds
+        </label>
+        <span className="text-xs text-muted-foreground" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span aria-hidden="true" style={{ width: 10, height: 10, background: SLEEP_FILL, display: 'inline-block' }} /> Sleep
+        </span>
+        {showFeeds && <span className="text-xs text-muted-foreground" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span aria-hidden="true" style={{ width: 10, height: 10, background: FEED_FILL, display: 'inline-block' }} /> Feeds
+        </span>}
+      </div>
+      {showFeeds && <p className="text-xs text-muted-foreground" role="status">
+        {feedsLoading ? 'Loading feeds…' : feedsError ? 'Could not load feeds. Turn the overlay off and on to retry.' : feeds.length === 0 ? 'No feeds recorded for this baby.' : 'Orange marks show feeds; feeds without a duration appear as a short mark.'}
+      </p>}
       {range !== 0 && (
         <div className="flex items-center justify-between gap-2">
           <Button type="button" size="icon" variant="outline" aria-label="Previous period" disabled={offset >= maxDaysBack} onClick={() => browse(1)}>
@@ -273,6 +359,21 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
           />
         ))}
 
+        {/* Draw feeds above sleep so overlapping events remain visible. */}
+        {showFeeds && !feedsLoading && !feedsError && feedSegments
+          .filter((seg) => seg.dayIndex >= firstVisible && seg.dayIndex < endVisible)
+          .map((seg, i) => (
+            <rect
+              key={`feed-${i}`}
+              x={xFor(seg.dayIndex)}
+              y={Math.min(yFor(seg.endMinute), MARGIN.top + plotHeight - 3)}
+              width={barWidth}
+              height={Math.max(((seg.endMinute - seg.startMinute) / MINUTES_PER_DAY) * plotHeight, 3)}
+              fill={FEED_FILL}
+              opacity={hoveredDay === null || hoveredDay === seg.dayIndex ? 1 : 0.4}
+            />
+          ))}
+
         {/* Week ticks */}
         {xTicks.map((tick) => (
           <g key={tick.dayIndex}>
@@ -335,6 +436,9 @@ export function SleepRasterChart({ sleeps, dateOfBirth, height = 420 }: SleepRas
             {(hovered.totalMinutes / 60).toFixed(1)}h asleep · {hovered.sessions}{' '}
             {hovered.sessions === 1 ? 'session' : 'sessions'}
           </p>
+          {showFeeds && !feedsLoading && !feedsError && (
+            <p style={{ color: FEED_FILL }}>{feedCounts.get(hovered.dayIndex) ?? 0} feeds</p>
+          )}
         </div>
       )}
     </div>

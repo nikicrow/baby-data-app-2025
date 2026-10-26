@@ -460,7 +460,7 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SleepRasterChart sleeps={sleeps} dateOfBirth={dateOfBirth} />
+          <SleepRasterChart babyId={babyId} refreshTrigger={refreshTrigger} sleeps={sleeps} dateOfBirth={dateOfBirth} />
         </CardContent>
       </Card>
 
