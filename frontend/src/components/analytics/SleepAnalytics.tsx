@@ -20,9 +20,10 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
-import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing } from "lucide-react";
-import { sleepApi, analyticsApi } from "../../services/api";
+import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing, CalendarRange } from "lucide-react";
+import { sleepApi, analyticsApi, babyApi } from "../../services/api";
 import type { SleepSession, DailyMetricsRow } from "../../types/api";
+import { SleepRasterChart } from "./SleepRasterChart";
 import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
 import { SleepTimeline } from "./SleepTimeline";
 
@@ -36,6 +37,7 @@ interface SleepAnalyticsProps {
 export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepAnalyticsProps) {
   const [sleeps, setSleeps] = useState<SleepSession[]>([]);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetricsRow[]>([]);
+  const [dateOfBirth, setDateOfBirth] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,6 +58,15 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
       } catch (metricsError) {
         console.error('Failed to fetch daily metrics:', metricsError);
         setDailyMetrics([]);
+      }
+      // DOB gives the sleep raster its "age in weeks" axis; without it the
+      // chart just falls back to calendar dates.
+      try {
+        const baby = await babyApi.getById(babyId);
+        setDateOfBirth(baby.date_of_birth);
+      } catch (babyError) {
+        console.error('Failed to fetch baby profile:', babyError);
+        setDateOfBirth(undefined);
       }
     } catch (error) {
       console.error('Failed to fetch sleep data:', error);
@@ -436,6 +447,22 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
           </CardContent>
         </Card>
       </div>
+
+      {/* Sleeping time of day over time (raster / actogram) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarRange className="w-5 h-5 text-blue-600" />
+            Sleeping Time of Day Over Time
+          </CardTitle>
+          <CardDescription>
+            One column per day across her whole history — each blue block is a stretch of sleep
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SleepRasterChart babyId={babyId} refreshTrigger={refreshTrigger} sleeps={sleeps} dateOfBirth={dateOfBirth} />
+        </CardContent>
+      </Card>
 
       {/* Sleep Trends */}
       <div className="grid lg:grid-cols-2 gap-6">
