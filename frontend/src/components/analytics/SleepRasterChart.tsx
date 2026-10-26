@@ -281,7 +281,7 @@ export function SleepRasterChart({ babyId, refreshTrigger, sleeps, dateOfBirth, 
         </span>}
       </div>
       {showFeeds && <p className="text-xs text-muted-foreground" role="status">
-        {feedsLoading ? 'Loading feeds…' : feedsError ? 'Could not load feeds. Turn the overlay off and on to retry.' : feeds.length === 0 ? 'No feeds recorded for this baby.' : 'Orange marks show feeds; feeds without a duration appear as a short mark.'}
+        {feedsLoading ? 'Loading feeds…' : feedsError ? 'Could not load feeds. Turn the overlay off and on to retry.' : feeds.length === 0 ? 'No feeds recorded for this baby.' : 'Orange bars show recorded feed durations. A short marker indicates a feed with no recorded elapsed time.'}
       </p>}
       {range !== 0 && (
         <div className="flex items-center justify-between gap-2">
@@ -366,9 +366,9 @@ export function SleepRasterChart({ babyId, refreshTrigger, sleeps, dateOfBirth, 
             <rect
               key={`feed-${i}`}
               x={xFor(seg.dayIndex)}
-              y={Math.min(yFor(seg.endMinute), MARGIN.top + plotHeight - 3)}
+              y={seg.endMinute > seg.startMinute ? yFor(seg.endMinute) : Math.min(yFor(seg.endMinute), MARGIN.top + plotHeight - 3)}
               width={barWidth}
-              height={Math.max(((seg.endMinute - seg.startMinute) / MINUTES_PER_DAY) * plotHeight, 3)}
+              height={seg.endMinute > seg.startMinute ? Math.max(((seg.endMinute - seg.startMinute) / MINUTES_PER_DAY) * plotHeight, 0.75) : 3}
               fill={FEED_FILL}
               opacity={hoveredDay === null || hoveredDay === seg.dayIndex ? 1 : 0.4}
             />
