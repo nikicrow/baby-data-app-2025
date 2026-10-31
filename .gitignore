@@ -9,6 +9,8 @@ wheels/
 # Environment files
 .env
 .env.local
+.env.19th
+backend/training-output/
 .env.*.local
 
 # Virtual environments

@@ -2,6 +2,49 @@
 
 This guide will walk you through starting your baby tracking application from scratch. You need to start three separate services in order: database, backend, and frontend.
 
+## Recommended: start the combined app
+
+With dependencies installed and PostgreSQL running, open PowerShell in the repository folder and run:
+
+```powershell
+.\Start-App.ps1
+```
+
+This checks the database, builds the frontend, and serves both the UI and API at
+http://localhost:8000. Keep the terminal open while using the app; press Ctrl+C
+to stop it. You do not need a separate frontend server for this mode.
+Use `.\Start-App.ps1 -SkipBuild` for a faster start if the frontend source has not changed.
+If the app is already running, the launcher opens the existing instance.
+
+The localhost address works on this computer. Remote access needs a separately
+configured Tailscale Serve proxy to the local server; installing Tailscale alone
+does not configure that proxy. The server must also stay running and this
+computer must stay awake for remote access to work.
+
+The manual development setup below runs a separate frontend on port 3000.
+
+## Hosted phone access on Fedora
+
+As checked on 26 October 2026, the existing app runs on `fedora-2` as the
+`crowclaws` user's `baby-data-app.service`. The service is enabled and user
+lingering is enabled, so it can start without an interactive login. The previous
+`fedora-1` Tailscale identity is offline with an expired key.
+
+On `fedora-2`, check the app and restore the missing HTTPS proxy with:
+
+```bash
+systemctl --user status baby-data-app.service
+curl --fail http://127.0.0.1:8000/health
+sudo tailscale serve --bg --https=443 http://127.0.0.1:8000
+tailscale serve status
+```
+
+The proxy command requires the Fedora administrator password. Once it succeeds,
+connect the phone to Tailscale and open https://fedora-2.tail53f4fd.ts.net.
+Update any bookmark that still points to `fedora-1`. This uses Tailscale Serve
+for access within the tailnet. No database migration or data copy is needed to
+restore this existing deployment's forwarding.
+
 ## Prerequisites
 
 Before you start, make sure you have these installed:
