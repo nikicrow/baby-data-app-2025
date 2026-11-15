@@ -140,12 +140,13 @@ export function SleepTimeline({ sleeps, referenceDate = new Date() }: SleepTimel
   const chartWidth = timeline.days.length * dayWidth;
   const gridHours = Array.from({ length: 9 }, (_, index) => index * 3);
 
+  const timelineKey = babyTimelineKey(timeline.days);
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ left: scrollRef.current.scrollWidth });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [babyTimelineKey(timeline.days)]);
+  }, [timelineKey]);
 
   const changeZoom = (delta: number) => {
     const element = scrollRef.current;

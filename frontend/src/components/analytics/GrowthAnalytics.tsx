@@ -15,7 +15,7 @@ import {
   ReferenceLine,
   Legend
 } from 'recharts';
-import { Scale, TrendingUp, Target, Baby, Zap, Award } from "lucide-react";
+import { Scale, TrendingUp, Target, Baby, Zap } from "lucide-react";
 import { growthApi, feedingApi } from "../../services/api";
 import type { GrowthMeasurement, FeedingSession } from "../../types/api";
 import { parseISO, format, differenceInDays, differenceInWeeks } from "date-fns";
@@ -33,24 +33,23 @@ export function GrowthAnalytics({ babyId, refreshTrigger, dateOfBirth }: GrowthA
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [growthsData, feedingsData] = await Promise.all([
+          growthApi.getAll({ baby_id: babyId }),
+          feedingApi.getAll({ baby_id: babyId }),
+        ]);
+        setGrowths(growthsData);
+        setFeedings(feedingsData);
+      } catch (error) {
+        console.error('Failed to fetch growth data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchData();
   }, [babyId, refreshTrigger]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [growthsData, feedingsData] = await Promise.all([
-        growthApi.getAll({ baby_id: babyId }),
-        feedingApi.getAll({ baby_id: babyId }),
-      ]);
-      setGrowths(growthsData);
-      setFeedings(feedingsData);
-    } catch (error) {
-      console.error('Failed to fetch growth data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading growth analytics...</div>;
@@ -81,7 +80,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger, dateOfBirth }: GrowthA
     else if (weightGain !== null) velocity = weightGain < 100 ? 'Slow' : 'Normal';
 
     return {
-      period: `${format(parseISO(prev.measurement_date), 'MMM d')} – ${format(parseISO(g.measurement_date), 'MMM d')}`,
+      period: `${format(parseISO(prev.measurement_date), 'MMM d')} â€“ ${format(parseISO(g.measurement_date), 'MMM d')}`,
       weightGain: weightGain === null ? null : Math.round(weightGain),
       heightGain: heightGain === null ? null : Math.round(heightGain * 10) / 10,
       velocity,

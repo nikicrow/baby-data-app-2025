@@ -20,7 +20,7 @@ import {
   Scatter,
   Legend
 } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
+import { TrendingUp, Clock, Baby, Droplets, Moon, Scale } from "lucide-react";
 import { SleepAnalytics } from "./analytics/SleepAnalytics";
 import { FeedAnalytics } from "./analytics/FeedAnalytics";
 import { NappyAnalytics } from "./analytics/NappyAnalytics";
@@ -73,29 +73,28 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
   const [growths, setGrowths] = useState<GrowthMeasurement[]>([]);
 
   useEffect(() => {
-    fetchAllData();
+    const fetchAllData = async () => {
+      try {
+        setLoading(true);
+        const [feedingsData, sleepsData, diapersData, growthsData] = await Promise.all([
+          feedingApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+          sleepApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+          diaperApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+          growthApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
+        ]);
+
+        setFeedings(feedingsData);
+        setSleeps(sleepsData);
+        setDiapers(diapersData);
+        setGrowths(growthsData);
+      } catch (error) {
+        console.error('Failed to fetch analytics data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchAllData();
   }, [babyId, refreshTrigger]);
-
-  const fetchAllData = async () => {
-    try {
-      setLoading(true);
-      const [feedingsData, sleepsData, diapersData, growthsData] = await Promise.all([
-        feedingApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
-        sleepApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
-        diaperApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
-        growthApi.getAll({ baby_id: babyId, limit: HISTORY_LIMIT }),
-      ]);
-
-      setFeedings(feedingsData);
-      setSleeps(sleepsData);
-      setDiapers(diapersData);
-      setGrowths(growthsData);
-    } catch (error) {
-      console.error('Failed to fetch analytics data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Anchor all "today" / relative-window calculations on the reference date so
   // the dashboard can show any past day, not just the real today.
@@ -427,10 +426,10 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                 <XAxis dataKey="time" />
                 <YAxis />
                 <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="duration" 
-                  stroke="#8884d8" 
+                <Line
+                  type="monotone"
+                  dataKey="duration"
+                  stroke="#8884d8"
                   strokeWidth={3}
                   dot={{ fill: '#8884d8', strokeWidth: 2, r: 6 }}
                 />
@@ -488,8 +487,8 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
             <div className="flex justify-center gap-4 mt-4">
               {feedTypeData.map((item) => (
                 <div key={item.name} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
+                  <div
+                    className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: item.color }}
                   />
                   <span className="text-sm">{item.name}</span>
@@ -513,19 +512,19 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                 <YAxis yAxisId="weight" orientation="left" />
                 <YAxis yAxisId="height" orientation="right" />
                 <Legend />
-                <Line 
+                <Line
                   yAxisId="weight"
-                  type="monotone" 
-                  dataKey="weight" 
-                  stroke="#8884d8" 
+                  type="monotone"
+                  dataKey="weight"
+                  stroke="#8884d8"
                   strokeWidth={2}
                   name="Weight (kg)"
                 />
-                <Line 
+                <Line
                   yAxisId="height"
-                  type="monotone" 
-                  dataKey="height" 
-                  stroke="#82ca9d" 
+                  type="monotone"
+                  dataKey="height"
+                  stroke="#82ca9d"
                   strokeWidth={2}
                   name="Height (cm)"
                 />

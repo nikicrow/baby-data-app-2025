@@ -13,7 +13,7 @@ import { INSIGHTS_TABS } from "./components/analytics/insightsTabs";
 import { Baby, BarChart3, Clock, Plus } from "lucide-react";
 import { babyApi } from "./services/api";
 import type { BabyProfile } from "./types/api";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import "./styles/app-layout.css";
 
 // Which baby the app opens on.

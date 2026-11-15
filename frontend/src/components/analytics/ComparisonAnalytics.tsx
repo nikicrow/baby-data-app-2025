@@ -12,6 +12,7 @@ import {
   Legend,
 } from 'recharts';
 import { Moon, Baby, Sun, Timer } from "lucide-react";
+import { getApiErrorMessage } from "../../services/errors";
 import { analyticsApi } from "../../services/api";
 import type { ComparisonResponse, WeeklyMetricsRow } from "../../types/api";
 
@@ -42,23 +43,22 @@ export function ComparisonAnalytics() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchComparison();
+    const fetchComparison = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const comparison = await analyticsApi.compare('age_weeks');
+        setData(comparison);
+      } catch (err) {
+        const detail = getApiErrorMessage(err);
+        setError(detail || 'Failed to load comparison data');
+        console.error('Failed to fetch comparison data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchComparison();
   }, []);
-
-  const fetchComparison = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const comparison = await analyticsApi.compare('age_weeks');
-      setData(comparison);
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      setError(detail || 'Failed to load comparison data');
-      console.error('Failed to fetch comparison data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading comparison...</div>;

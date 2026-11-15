@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   getBabies: vi.fn(),
 }));
 vi.mock('./services/api', () => ({ babyApi: { getAll: mocks.getBabies } }));
-vi.mock('sonner@2.0.3', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('./router', async () => {
   const { useEffect } = await import('react');
   return { AppRoutes: () => {

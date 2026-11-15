@@ -5,10 +5,15 @@ import { buildGrowthProgress, buildPercentileComparison, readPercentile } from '
 
 const feeding = (overrides: Partial<FeedingSession>): FeedingSession => ({
   id: 'feed', baby_id: 'baby', created_at: '2026-10-15T12:00:00',
+  updated_at: '2026-10-15T12:00:00', notes: null, end_time: null, breast_started: null,
+  left_breast_duration: null, right_breast_duration: null, volume_offered_ml: null, volume_consumed_ml: null,
+  formula_type: null, food_items: null, appetite: null, duration_minutes: null,
   start_time: '2026-10-15T12:00:00', feeding_type: 'bottle', ...overrides,
 });
 const growth = (overrides: Partial<GrowthMeasurement>): GrowthMeasurement => ({
   id: 'growth', baby_id: 'baby', created_at: '2026-10-15T12:00:00',
+  updated_at: '2026-10-15T12:00:00', notes: null, weight_kg: null, length_cm: null,
+  head_circumference_cm: null, measured_by: null, percentiles: null,
   measurement_date: '2026-10-15', measurement_context: 'home', ...overrides,
 });
 

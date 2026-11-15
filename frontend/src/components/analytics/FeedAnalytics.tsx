@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
-import { Progress } from "../ui/progress";
 import {
   BarChart,
   Bar,
@@ -11,15 +10,13 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  AreaChart,
-  Area,
   PieChart,
   Pie,
   Cell,
   ComposedChart,
   Legend
 } from 'recharts';
-import { Baby, Clock, TrendingUp, Droplets, Zap, Timer } from "lucide-react";
+import { Baby, Clock, Droplets, Zap, Timer } from "lucide-react";
 import { feedingApi } from "../../services/api";
 import type { FeedingSession } from "../../types/api";
 import { buildFeedingAnalytics } from './feedingCalculations';
@@ -36,20 +33,19 @@ export function FeedAnalytics({ babyId, refreshTrigger, referenceDate }: FeedAna
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchFeedings();
+    const fetchFeedings = async () => {
+      try {
+        setLoading(true);
+        const data = await feedingApi.getAll({ baby_id: babyId, limit: 2000 });
+        setFeedings(data);
+      } catch (error) {
+        console.error('Failed to fetch feeding data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchFeedings();
   }, [babyId, refreshTrigger]);
-
-  const fetchFeedings = async () => {
-    try {
-      setLoading(true);
-      const data = await feedingApi.getAll({ baby_id: babyId, limit: 2000 });
-      setFeedings(data);
-    } catch (error) {
-      console.error('Failed to fetch feeding data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading feeding analytics...</div>;
