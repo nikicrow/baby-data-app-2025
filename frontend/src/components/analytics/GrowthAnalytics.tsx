@@ -19,13 +19,15 @@ import { Scale, TrendingUp, Target, Baby, Zap, Award } from "lucide-react";
 import { growthApi, feedingApi } from "../../services/api";
 import type { GrowthMeasurement, FeedingSession } from "../../types/api";
 import { parseISO, format, differenceInDays, differenceInWeeks } from "date-fns";
+import { buildGrowthProgress, buildPercentileComparison, readPercentile } from "./growthCalculations";
 
 interface GrowthAnalyticsProps {
   babyId: string;
   refreshTrigger?: number;
+  dateOfBirth: string;
 }
 
-export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps) {
+export function GrowthAnalytics({ babyId, refreshTrigger, dateOfBirth }: GrowthAnalyticsProps) {
   const [growths, setGrowths] = useState<GrowthMeasurement[]>([]);
   const [feedings, setFeedings] = useState<FeedingSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,37 +62,28 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
   );
 
   // Growth progress data
-  const growthProgressData = sortedGrowths.map((g, index) => {
-    const weekNumber = index === 0 ? 'Birth' : `Week ${index}`;
-    return {
-      date: weekNumber,
-      weight: g.weight_kg || 0,
-      height: g.length_cm || 0,
-      headCircumference: g.head_circumference_cm || 0,
-      // Simplified percentile estimation (would need proper WHO data for accuracy)
-      weightPercentile: g.percentiles?.weight || 50,
-      heightPercentile: g.percentiles?.height || 50,
-      age: index,
-    };
-  });
+  const growthProgressData = buildGrowthProgress(sortedGrowths, dateOfBirth);
 
   // Growth velocity data (week-over-week changes)
-  const growthVelocityData = sortedGrowths.slice(1).map((g, index) => {
+  const growthVelocityData = sortedGrowths.slice(1).flatMap((g, index) => {
     const prev = sortedGrowths[index];
-    const daysDiff = differenceInDays(parseISO(g.measurement_date), parseISO(prev.measurement_date)) || 7;
+    const daysDiff = differenceInDays(parseISO(g.measurement_date), parseISO(prev.measurement_date));
+    if (daysDiff <= 0) return [];
     const weeklyFactor = 7 / daysDiff;
 
-    const weightGain = ((g.weight_kg || 0) - (prev.weight_kg || 0)) * 1000 * weeklyFactor; // grams per week
-    const heightGain = ((g.length_cm || 0) - (prev.length_cm || 0)) * weeklyFactor; // cm per week
+    const weightGain = g.weight_kg != null && prev.weight_kg != null
+      ? (g.weight_kg - prev.weight_kg) * 1000 * weeklyFactor : null; // grams per week
+    const heightGain = g.length_cm != null && prev.length_cm != null
+      ? (g.length_cm - prev.length_cm) * weeklyFactor : null; // cm per week
 
-    let velocity = 'Normal';
-    if (weightGain > 250) velocity = 'Accelerated';
-    else if (weightGain < 100) velocity = 'Slow';
+    let velocity = 'Unavailable';
+    if (weightGain !== null && weightGain > 250) velocity = 'Accelerated';
+    else if (weightGain !== null) velocity = weightGain < 100 ? 'Slow' : 'Normal';
 
     return {
-      period: `Week ${index + 1}-${index + 2}`,
-      weightGain: Math.round(weightGain),
-      heightGain: Math.round(heightGain * 10) / 10,
+      period: `${format(parseISO(prev.measurement_date), 'MMM d')} � ${format(parseISO(g.measurement_date), 'MMM d')}`,
+      weightGain: weightGain === null ? null : Math.round(weightGain),
+      heightGain: heightGain === null ? null : Math.round(heightGain * 10) / 10,
       velocity,
     };
   });
@@ -99,30 +92,12 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
   const firstGrowth = sortedGrowths[0];
   const latestGrowth = sortedGrowths[sortedGrowths.length - 1];
 
-  const percentileComparison = [
-    {
-      measurement: 'Weight',
-      current: latestGrowth?.percentiles?.weight || 50,
-      birth: firstGrowth?.percentiles?.weight || 50,
-      target: 50,
-    },
-    {
-      measurement: 'Height',
-      current: latestGrowth?.percentiles?.height || 50,
-      birth: firstGrowth?.percentiles?.height || 50,
-      target: 50,
-    },
-    {
-      measurement: 'Head Circumference',
-      current: latestGrowth?.percentiles?.head || 50,
-      birth: firstGrowth?.percentiles?.head || 50,
-      target: 50,
-    },
-  ];
+  const percentileComparison = buildPercentileComparison(firstGrowth, latestGrowth);
 
   // Nutrition correlation - compare feeding volume to weight gain
-  const nutritionCorrelation = sortedGrowths.slice(1).map((g, index) => {
+  const nutritionCorrelation = sortedGrowths.slice(1).flatMap((g, index) => {
     const prev = sortedGrowths[index];
+    if (g.weight_kg == null || prev.weight_kg == null || g.measurement_date <= prev.measurement_date) return [];
     const startDate = parseISO(prev.measurement_date);
     const endDate = parseISO(g.measurement_date);
 
@@ -139,7 +114,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
     const weightGain = ((g.weight_kg || 0) - (prev.weight_kg || 0)) * 1000; // in grams
 
     return {
-      week: index + 1,
+      week: format(endDate, 'MMM d, yyyy'),
       dailyIntake,
       weightGain: Math.round(weightGain),
     };
@@ -154,7 +129,8 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
 
     const first = recentGrowths[0];
     const last = recentGrowths[recentGrowths.length - 1];
-    const daysDiff = differenceInDays(parseISO(last.measurement_date), parseISO(first.measurement_date)) || 1;
+    const daysDiff = differenceInDays(parseISO(last.measurement_date), parseISO(first.measurement_date));
+    if (daysDiff <= 0 || first.weight_kg == null || last.weight_kg == null || first.length_cm == null || last.length_cm == null) return [];
 
     const weightGainPerDay = ((last.weight_kg || 0) - (first.weight_kg || 0)) / daysDiff;
     const heightGainPerDay = ((last.length_cm || 0) - (first.length_cm || 0)) / daysDiff;
@@ -163,11 +139,11 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
     const currentHeight = last.length_cm || 0;
 
     return [
-      { month: 'Month 2', projectedWeight: Math.round((currentWeight + weightGainPerDay * 30) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 30) },
-      { month: 'Month 3', projectedWeight: Math.round((currentWeight + weightGainPerDay * 60) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 60) },
-      { month: 'Month 4', projectedWeight: Math.round((currentWeight + weightGainPerDay * 90) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 90) },
-      { month: 'Month 6', projectedWeight: Math.round((currentWeight + weightGainPerDay * 150) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 150) },
-      { month: 'Month 12', projectedWeight: Math.round((currentWeight + weightGainPerDay * 330) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 330) },
+      { month: 'In 1 month', projectedWeight: Math.round((currentWeight + weightGainPerDay * 30) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 30) },
+      { month: 'In 2 months', projectedWeight: Math.round((currentWeight + weightGainPerDay * 60) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 60) },
+      { month: 'In 3 months', projectedWeight: Math.round((currentWeight + weightGainPerDay * 90) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 90) },
+      { month: 'In 5 months', projectedWeight: Math.round((currentWeight + weightGainPerDay * 150) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 150) },
+      { month: 'In 11 months', projectedWeight: Math.round((currentWeight + weightGainPerDay * 330) * 10) / 10, projectedHeight: Math.round(currentHeight + heightGainPerDay * 330) },
     ];
   };
 
@@ -186,16 +162,16 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
   const heightGainPercent = birthHeight > 0 ? Math.round((totalHeightGain / birthHeight) * 100) : 0;
 
   // Recent weekly gain
-  const recentWeeklyGain = growthVelocityData.length > 0
-    ? growthVelocityData[growthVelocityData.length - 1].weightGain
-    : 0;
+  const recentWeeklyGain = growthVelocityData.at(-1)?.weightGain ?? 0;
 
-  // Average weekly gains
-  const avgWeeklyWeightGain = growthVelocityData.length > 0
-    ? Math.round(growthVelocityData.reduce((sum, d) => sum + d.weightGain, 0) / growthVelocityData.length)
+  // Average only intervals that have both measurements.
+  const weightGains = growthVelocityData.flatMap(d => d.weightGain === null ? [] : [d.weightGain]);
+  const heightGains = growthVelocityData.flatMap(d => d.heightGain === null ? [] : [d.heightGain]);
+  const avgWeeklyWeightGain = weightGains.length > 0
+    ? Math.round(weightGains.reduce((sum, gain) => sum + gain, 0) / weightGains.length)
     : 0;
-  const avgWeeklyHeightGain = growthVelocityData.length > 0
-    ? Math.round(growthVelocityData.reduce((sum, d) => sum + d.heightGain, 0) / growthVelocityData.length * 10) / 10
+  const avgWeeklyHeightGain = heightGains.length > 0
+    ? Math.round(heightGains.reduce((sum, gain) => sum + gain, 0) / heightGains.length * 10) / 10
     : 0;
 
   // Growth velocity status
@@ -270,11 +246,11 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Weight Percentile</p>
-                <p className="text-2xl font-bold">{latestGrowth?.percentiles?.weight ? `${latestGrowth.percentiles.weight}th` : 'N/A'}</p>
+                <p className="text-2xl font-bold">{readPercentile(latestGrowth?.percentiles, 'weight') !== null ? `${readPercentile(latestGrowth?.percentiles, 'weight')}th` : 'N/A'}</p>
               </div>
               <Target className="w-8 h-8 text-purple-600" />
             </div>
-            {latestGrowth?.percentiles?.weight && <Progress value={latestGrowth.percentiles.weight} className="mt-2" />}
+            {readPercentile(latestGrowth?.percentiles, 'weight') !== null && <Progress value={readPercentile(latestGrowth?.percentiles, 'weight') ?? undefined} className="mt-2" />}
           </CardContent>
         </Card>
 
@@ -314,7 +290,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <Legend />
                   <Line yAxisId="weight" type="monotone" dataKey="weight" stroke="#8884d8" strokeWidth={3} name="Weight" />
                   <Line yAxisId="height" type="monotone" dataKey="height" stroke="#82ca9d" strokeWidth={3} name="Height" />
-                  {birthWeight > 0 && <ReferenceLine yAxisId="weight" y={birthWeight} stroke="#ff7c7c" strokeDasharray="5 5" label="Birth Weight" />}
+                  {birthWeight > 0 && <ReferenceLine yAxisId="weight" y={birthWeight} stroke="#ff7c7c" strokeDasharray="5 5" label="First Recorded Weight" />}
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
@@ -331,11 +307,11 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
             <CardDescription>How your baby compares to population averages</CardDescription>
           </CardHeader>
           <CardContent>
-            {growthProgressData.length > 0 && growthProgressData.some(d => d.weightPercentile !== 50) ? (
+            {growthProgressData.some(d => d.weightPercentile !== null || d.heightPercentile !== null) ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={growthProgressData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="age" label={{ value: 'Age (weeks)', position: 'insideBottom', offset: -10 }} />
+                  <XAxis dataKey="date" />
                   <YAxis label={{ value: 'Percentile', angle: -90, position: 'insideLeft' }} />
                   <Legend />
                   <Line type="monotone" dataKey="weightPercentile" stroke="#8884d8" strokeWidth={2} name="Weight %ile" />
@@ -395,10 +371,10 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
         <Card>
           <CardHeader>
             <CardTitle>Percentile Progress</CardTitle>
-            <CardDescription>Current vs birth percentiles</CardDescription>
+            <CardDescription>Latest vs first recorded percentiles</CardDescription>
           </CardHeader>
           <CardContent>
-            {sortedGrowths.length > 0 ? (
+            {percentileComparison.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={percentileComparison}>
@@ -406,7 +382,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                     <XAxis dataKey="measurement" />
                     <YAxis />
                     <Legend />
-                    <Bar dataKey="birth" fill="#e5e7eb" name="Birth Percentile" />
+                    <Bar dataKey="birth" fill="#e5e7eb" name="First Percentile" />
                     <Bar dataKey="current" fill="#8884d8" name="Current Percentile" />
                     <ReferenceLine y={50} stroke="#ffc658" strokeDasharray="5 5" />
                   </BarChart>
@@ -416,10 +392,12 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                     <div key={item.measurement} className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">{item.measurement}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">{item.birth}th → {item.current}th</span>
-                        <Badge variant={item.current > item.birth ? "default" : "secondary"}>
-                          {item.current > item.birth ? "↑" : item.current === item.birth ? "→" : "↓"}
-                        </Badge>
+                        <span className="text-sm">{item.birth == null ? 'N/A' : `${item.birth}th`} to {item.current == null ? 'N/A' : `${item.current}th`}</span>
+                        {item.current != null && item.birth != null && (
+                          <Badge variant={item.current > item.birth ? "default" : "secondary"}>
+                            {item.current > item.birth ? 'Up' : item.current === item.birth ? 'Same' : 'Down'}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -427,7 +405,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
               </>
             ) : (
               <div className="flex items-center justify-center h-[250px] text-muted-foreground">
-                No growth data available
+                No percentile data available
               </div>
             )}
           </CardContent>
@@ -446,7 +424,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
               <ResponsiveContainer width="100%" height={300}>
                 <ComposedChart data={nutritionCorrelation}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="week" label={{ value: 'Week', position: 'insideBottom', offset: -10 }} />
+                  <XAxis dataKey="week" label={{ value: 'Measurement date', position: 'insideBottom', offset: -10 }} />
                   <YAxis yAxisId="intake" orientation="left" label={{ value: 'Daily Intake (ml)', angle: -90, position: 'insideLeft' }} />
                   <YAxis yAxisId="weight" orientation="right" label={{ value: 'Weight Gain (g)', angle: 90, position: 'insideRight' }} />
                   <Legend />
@@ -480,7 +458,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
         <Card>
           <CardHeader>
             <CardTitle>Growth Summary</CardTitle>
-            <CardDescription>Total growth since birth</CardDescription>
+            <CardDescription>Total growth since first measurement</CardDescription>
           </CardHeader>
           <CardContent>
             {sortedGrowths.length > 0 ? (
@@ -541,12 +519,12 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Projected 6-month weight</span>
-                    <span className="font-semibold">{growthProjection.find(p => p.month === 'Month 6')?.projectedWeight || 'N/A'}kg</span>
+                    <span className="text-sm text-muted-foreground">Projected weight in 5 months</span>
+                    <span className="font-semibold">{growthProjection.find(p => p.month === 'In 5 months')?.projectedWeight || 'N/A'}kg</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Projected 1-year weight</span>
-                    <span className="font-semibold">{growthProjection.find(p => p.month === 'Month 12')?.projectedWeight || 'N/A'}kg</span>
+                    <span className="text-sm text-muted-foreground">Projected weight in 11 months</span>
+                    <span className="font-semibold">{growthProjection.find(p => p.month === 'In 11 months')?.projectedWeight || 'N/A'}kg</span>
                   </div>
                 </div>
               </>
@@ -587,7 +565,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <div className="flex items-start gap-3">
                     <Badge variant="secondary">Weight Trend</Badge>
                     <p className="text-sm">
-                      Total weight gain of {totalWeightGain.toFixed(2)}kg ({weightGainPercent}% from birth weight).
+                      Total weight gain of {totalWeightGain.toFixed(2)}kg ({weightGainPercent}% from first recorded weight).
                       {weightGainPercent >= 10 && weightGainPercent <= 50 ? ' This is healthy progress!' : ''}
                     </p>
                   </div>
@@ -604,7 +582,7 @@ export function GrowthAnalytics({ babyId, refreshTrigger }: GrowthAnalyticsProps
                   <div className="flex items-start gap-3">
                     <Badge variant="secondary">Projection</Badge>
                     <p className="text-sm">
-                      Based on current trends, projected to reach {growthProjection.find(p => p.month === 'Month 6')?.projectedWeight}kg by 6 months.
+                      Based on current trends, projected to reach {growthProjection.find(p => p.month === 'In 5 months')?.projectedWeight}kg in 5 months after the latest measurement.
                     </p>
                   </div>
                 )}

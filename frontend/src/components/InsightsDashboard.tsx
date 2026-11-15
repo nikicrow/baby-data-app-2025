@@ -141,7 +141,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
   ].filter(d => d.value > 0);
 
   // Growth data
-  const growthData = growths
+  const growthData = [...growths]
     .sort((a, b) => new Date(a.measurement_date).getTime() - new Date(b.measurement_date).getTime())
     .map(g => ({
       date: format(parseISO(g.measurement_date), 'MMM d'),
@@ -373,7 +373,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
                       <p className="text-sm text-muted-foreground">Latest Weight</p>
                       <p className="text-2xl font-bold">
                         {growths.length > 0
-                          ? `${growths.sort((a, b) => new Date(b.measurement_date).getTime() - new Date(a.measurement_date).getTime())[0].weight_kg}kg`
+                          ? `${[...growths].sort((a, b) => new Date(b.measurement_date).getTime() - new Date(a.measurement_date).getTime())[0].weight_kg}kg`
                           : '-'}
                       </p>
                     </div>
@@ -648,7 +648,7 @@ export function InsightsDashboard({ baby, refreshTrigger }: InsightsDashboardPro
         </TabsContent>
 
         <TabsContent value="growth" className="mt-6">
-          <GrowthAnalytics babyId={babyId} refreshTrigger={refreshTrigger} />
+          <GrowthAnalytics dateOfBirth={baby.date_of_birth} babyId={babyId} refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="compare" className="mt-6">
