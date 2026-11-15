@@ -39,6 +39,7 @@ const sleep = (
   sleep_type: 'nighttime',
   location: 'crib',
   sleep_quality: 'good',
+  notes: null, sleep_environment: null, wake_reason: null,
   created_at: start_time,
   updated_at: end_time,
   duration_minutes: Math.round(
@@ -67,7 +68,7 @@ describe('buildSleepTimeline', () => {
   it('uses duration when a completed session has no end timestamp', () => {
     const session = {
       ...sleep('duration-only', '2026-10-05T09:15:00', '2026-10-05T10:45:00'),
-      end_time: undefined,
+      end_time: null,
       duration_minutes: 90,
     };
 

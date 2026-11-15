@@ -1,0 +1,32 @@
+.app-sidebar {
+  display: none;
+}
+
+.app-content {
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    display: flex;
+    height: 100vh;
+  }
+
+  .app-sidebar {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .app-main {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .app-content {
+    max-width: 72rem;
+    padding: 2rem;
+  }
+}

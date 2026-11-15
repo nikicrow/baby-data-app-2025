@@ -6,9 +6,13 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Baby, Droplets, Moon, Scale, Zap, Loader2, Clock, Sun } from "lucide-react";
 import { feedingApi, diaperApi, sleepApi, growthApi } from "../services/api";
+import { sleepLocationValues } from "../types/api";
+import { enumValue, type ActivityFormData, type ActivityType } from "../types/forms";
+import { getApiErrorMessage } from "../services/errors";
+import { format } from "date-fns";
 import type { SleepSession } from "../types/api";
 
 // Helper to format duration as "Xh Ym"
@@ -32,8 +36,8 @@ interface LogActivityProps {
 }
 
 export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
-  const [activeEntry, setActiveEntry] = useState<string | null>(null);
-  const [formData, setFormData] = useState<any>({});
+  const [activeEntry, setActiveEntry] = useState<ActivityType | null>(null);
+  const [formData, setFormData] = useState<ActivityFormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [useCustomTime, setUseCustomTime] = useState(false);
   const [customDate, setCustomDate] = useState('');
@@ -111,7 +115,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   const sleepTimePreview = useMemo(() => {
     if (formData.sleepType !== 'log' || !formData.duration) return null;
 
-    const duration = parseInt(formData.duration) || 0;
+    const duration = parseInt(formData.duration ?? '') || 0;
     if (duration <= 0) return null;
 
     const endTime = useCustomTime && customDate && customTime
@@ -126,7 +130,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     };
   }, [formData.sleepType, formData.duration, useCustomTime, customDate, customTime]);
 
-  const handleSubmit = async (type: string) => {
+  const handleSubmit = async (type: ActivityType) => {
     setIsSubmitting(true);
     try {
       switch (type) {
@@ -153,18 +157,16 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
       setCustomTime('');
       onActivityAdded();
       toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} logged successfully!`);
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Failed to log ${type}:`, error);
-      // Only show generic error if it's not a validation error we already handled
-      if (error.response?.data?.detail) {
-        toast.error(`Failed to log ${type}. ${error.response.data.detail}`);
-      }
+      toast.error(`Failed to log ${type}. ${getApiErrorMessage(error)}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleFeedingSubmit = async () => {
+    if (!formData.feedType) throw new Error("Please select a feed type");
     const feedingData: FeedingSessionCreate = {
       baby_id: babyId,
       feeding_type: formData.feedType === 'pump' ? 'bottle' : formData.feedType, // Map 'pump' to 'bottle' for now
@@ -173,10 +175,10 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
 
     // Add breast-specific fields
     if (formData.feedType === 'breast' && formData.firstBreast) {
-      feedingData.breast_started = formData.firstBreast.toLowerCase() as 'left' | 'right';
+      feedingData.breast_started = formData.firstBreast;
 
       // Add first breast duration
-      const firstDuration = parseInt(formData.firstBreastDuration) || 0;
+      const firstDuration = parseInt(formData.firstBreastDuration ?? '') || 0;
       if (formData.firstBreast === 'left') {
         feedingData.left_breast_duration = firstDuration;
       } else {
@@ -196,7 +198,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
 
     // Add bottle-specific fields
     if (formData.feedType === 'bottle' || formData.feedType === 'pump') {
-      const amount = parseInt(formData.amount) || 0;
+      const amount = parseInt(formData.amount ?? '') || 0;
       feedingData.volume_consumed_ml = amount;
       feedingData.volume_offered_ml = amount;
     }
@@ -241,8 +243,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     } else if (formData.sleepType === 'end') {
       // End active sleep - update existing record
       if (!activeSleep) {
-        toast.error('No active sleep to end. Use "Log Past Sleep" instead.');
-        throw new Error('No active sleep session');
+        throw new Error('No active sleep to end. Use "Log Past Sleep" instead.');
       }
       await sleepApi.update(activeSleep.id, {
         end_time: new Date().toISOString()
@@ -251,10 +252,9 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
 
     } else if (formData.sleepType === 'log') {
       // Log completed sleep retroactively
-      const duration = parseInt(formData.duration) || 0;
+      const duration = parseInt(formData.duration ?? '') || 0;
       if (duration <= 0) {
-        toast.error('Please enter how long baby slept');
-        throw new Error('Duration required');
+        throw new Error('Please enter how long baby slept');
       }
 
       // Use custom end time if set, otherwise use now
@@ -273,15 +273,14 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
       };
       await sleepApi.create(sleepData);
     } else {
-      toast.error('Please select a sleep action');
-      throw new Error('No sleep action selected');
+      throw new Error('Please select a sleep action');
     }
   };
 
   const handleGrowthSubmit = async () => {
     const growthData: GrowthMeasurementCreate = {
       baby_id: babyId,
-      measurement_date: getTimestamp(),
+      measurement_date: useCustomTime && customDate ? customDate : format(new Date(), 'yyyy-MM-dd'),
       measurement_context: 'home',
       notes: formData.notes,
     };
@@ -298,7 +297,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
   };
 
   // Reusable time picker component
-  const renderTimePicker = () => (
+  const renderTimePicker = (dateOnly = false) => (
     <div className="border-t pt-4 mt-4">
       <Button
         type="button"
@@ -308,7 +307,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
         className="w-full text-left justify-start"
       >
         <Clock className="w-4 h-4 mr-2" />
-        {useCustomTime ? 'Using custom time ✓' : 'Log for different time?'}
+        {useCustomTime ? 'Using custom date/time' : dateOnly ? 'Log for different date?' : 'Log for different time?'}
       </Button>
 
       {useCustomTime && (
@@ -323,7 +322,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
               className="mt-1"
             />
           </div>
-          <div>
+          {!dateOnly && <div>
             <Label htmlFor="customTime" className="text-sm">Time</Label>
             <Input
               id="customTime"
@@ -332,9 +331,9 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
               onChange={(e) => setCustomTime(e.target.value)}
               className="mt-1"
             />
-          </div>
+          </div>}
           <p className="text-xs text-muted-foreground">
-            Logging for: {customDate} at {customTime}
+            Logging for: {customDate}{!dateOnly && ` at ${customTime}`}
           </p>
         </div>
       )}
@@ -345,7 +344,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
     <div className="space-y-4">
       <div>
         <Label>Feed Type</Label>
-        <Select onValueChange={(value) => setFormData({...formData, feedType: value})}>
+        <Select onValueChange={(value) => setFormData({...formData, feedType: enumValue(value, ['breast', 'bottle', 'pump'] as const)})}>
           <SelectTrigger>
             <SelectValue placeholder="Select feed type" />
           </SelectTrigger>
@@ -694,7 +693,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
       {(formData.sleepType === 'start' || formData.sleepType === 'log') && (
         <div>
           <Label htmlFor="location">Sleep Location (optional)</Label>
-          <Select onValueChange={(value) => setFormData({...formData, location: value})}>
+          <Select onValueChange={(value) => setFormData({...formData, location: enumValue(value, sleepLocationValues)})}>
             <SelectTrigger>
               <SelectValue placeholder="Where did baby sleep?" />
             </SelectTrigger>
@@ -772,7 +771,7 @@ export function LogActivity({ babyId, onActivityAdded }: LogActivityProps) {
         />
       </div>
 
-      {renderTimePicker()}
+      {renderTimePicker(true)}
 
       <div className="flex gap-2">
         <Button onClick={() => handleSubmit('growth')} className="flex-1" disabled={isSubmitting}>

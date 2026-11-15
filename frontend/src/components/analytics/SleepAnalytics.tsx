@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
-  LineChart,
   Line,
   AreaChart,
   Area,
@@ -24,7 +23,7 @@ import { Moon, Clock, TrendingUp, Target, Zap, Sun, BellRing, CalendarRange } fr
 import { sleepApi, analyticsApi, babyApi } from "../../services/api";
 import type { SleepSession, DailyMetricsRow } from "../../types/api";
 import { SleepRasterChart } from "./SleepRasterChart";
-import { parseISO, format, startOfDay, subDays, getHours, differenceInMinutes } from "date-fns";
+import { parseISO, format, startOfDay, subDays, getHours } from "date-fns";
 import { SleepTimeline } from "./SleepTimeline";
 
 interface SleepAnalyticsProps {
@@ -41,39 +40,38 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchSleeps();
+    const fetchSleeps = async () => {
+      try {
+        setLoading(true);
+        const data = await sleepApi.getAll({ baby_id: babyId, limit: 2000 });
+        setSleeps(data);
+        // Night wakings / time-awake come from the dbt daily-metrics mart, not the
+        // raw sleep sessions. This endpoint 503s if the mart hasn't been built —
+        // fall back to an empty set so the rest of the tab still renders.
+        try {
+          const metrics = await analyticsApi.getDailyMetrics(babyId);
+          setDailyMetrics(metrics);
+        } catch (metricsError) {
+          console.error('Failed to fetch daily metrics:', metricsError);
+          setDailyMetrics([]);
+        }
+        // DOB gives the sleep raster its "age in weeks" axis; without it the
+        // chart just falls back to calendar dates.
+        try {
+          const baby = await babyApi.getById(babyId);
+          setDateOfBirth(baby.date_of_birth);
+        } catch (babyError) {
+          console.error('Failed to fetch baby profile:', babyError);
+          setDateOfBirth(undefined);
+        }
+      } catch (error) {
+        console.error('Failed to fetch sleep data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchSleeps();
   }, [babyId, refreshTrigger]);
-
-  const fetchSleeps = async () => {
-    try {
-      setLoading(true);
-      const data = await sleepApi.getAll({ baby_id: babyId, limit: 2000 });
-      setSleeps(data);
-      // Night wakings / time-awake come from the dbt daily-metrics mart, not the
-      // raw sleep sessions. This endpoint 503s if the mart hasn't been built —
-      // fall back to an empty set so the rest of the tab still renders.
-      try {
-        const metrics = await analyticsApi.getDailyMetrics(babyId);
-        setDailyMetrics(metrics);
-      } catch (metricsError) {
-        console.error('Failed to fetch daily metrics:', metricsError);
-        setDailyMetrics([]);
-      }
-      // DOB gives the sleep raster its "age in weeks" axis; without it the
-      // chart just falls back to calendar dates.
-      try {
-        const baby = await babyApi.getById(babyId);
-        setDateOfBirth(baby.date_of_birth);
-      } catch (babyError) {
-        console.error('Failed to fetch baby profile:', babyError);
-        setDateOfBirth(undefined);
-      }
-    } catch (error) {
-      console.error('Failed to fetch sleep data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading sleep analytics...</div>;
@@ -141,34 +139,6 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
     };
   });
 
-  const nightlyInsightsData = Array.from({ length: 14 }, (_, i) => {
-    const date = subDays(now, 13 - i);
-    const dateKey = format(date, 'yyyy-MM-dd');
-    const metrics = dailyMetrics.find((row) => row.metric_date === dateKey);
-
-    return {
-      date: format(date, 'MMM d'),
-      longestStretch: metrics?.longest_night_stretch_minutes != null
-        ? Math.round((metrics.longest_night_stretch_minutes / 60) * 10) / 10
-        : null,
-      nightWakings: metrics?.night_sleep_segments != null
-        ? Math.max(metrics.night_sleep_segments - 1, 0)
-        : null,
-    };
-  });
-
-  const nightsWithInsights = nightlyInsightsData.filter(
-    (night) => night.longestStretch != null || night.nightWakings != null
-  );
-  const averageLongestStretch = nightsWithInsights.filter((night) => night.longestStretch != null).reduce(
-    (sum, night) => sum + (night.longestStretch ?? 0),
-    0
-  ) / nightsWithInsights.filter((night) => night.longestStretch != null).length || 0;
-  const averageNightWakings = nightsWithInsights.filter((night) => night.nightWakings != null).reduce(
-    (sum, night) => sum + (night.nightWakings ?? 0),
-    0
-  ) / nightsWithInsights.filter((night) => night.nightWakings != null).length || 0;
-
   // Sleep patterns by time of day
   const getSleepsByTimeOfDay = (hour: number, label: string, type: string) => {
     const relevantSleeps = sleeps.filter((s: SleepSession) => {
@@ -182,15 +152,15 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
 
     // Calculate quality based on sleep_quality field
     const qualityScores = { 'deep': 100, 'good': 85, 'fair': 70, 'restless': 50 };
-    const avgQuality = relevantSleeps.length > 0
-      ? relevantSleeps.reduce((sum: number, s: SleepSession) => sum + (qualityScores[s.sleep_quality] || 70), 0) / relevantSleeps.length
-      : 0;
+    const recordedQuality = relevantSleeps.flatMap(s => s.sleep_quality === null ? [] : [qualityScores[s.sleep_quality]]);
+    const avgQuality = recordedQuality.length > 0
+      ? recordedQuality.reduce((sum, score) => sum + score, 0) / recordedQuality.length : null;
 
     return {
       time: label,
       type,
       duration: Math.round(avgDuration * 10) / 10,
-      quality: Math.round(avgQuality),
+      quality: avgQuality === null ? null : Math.round(avgQuality),
     };
   };
 
@@ -278,7 +248,7 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
   }));
 
   // Sleep efficiency by week (last 6 weeks)
-  const sleepEfficiencyData = Array.from({ length: 6 }, (_, i) => {
+  const sleepEfficiencyData = Array.from({ length: 6 }, (_, i) => i).flatMap(i => {
     const weekStart = subDays(now, (5 - i) * 7 + 7);
     const weekEnd = subDays(now, (5 - i) * 7);
 
@@ -289,9 +259,9 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
 
     // Efficiency based on quality scores
     const qualityScores = { 'deep': 100, 'good': 85, 'fair': 70, 'restless': 50 };
-    const avgEfficiency = weekSleeps.length > 0
-      ? weekSleeps.reduce((sum: number, s: SleepSession) => sum + (qualityScores[s.sleep_quality] || 70), 0) / weekSleeps.length
-      : 0;
+    const recordedQuality = weekSleeps.flatMap(s => s.sleep_quality === null ? [] : [qualityScores[s.sleep_quality]]);
+    if (recordedQuality.length === 0) return [];
+    const avgEfficiency = recordedQuality.reduce((sum, score) => sum + score, 0) / recordedQuality.length;
 
     const avgDuration = weekSleeps.length > 0
       ? weekSleeps.reduce((sum: number, s: SleepSession) => sum + (s.duration_minutes || 0), 0) / weekSleeps.length
@@ -312,11 +282,6 @@ export function SleepAnalytics({ babyId, refreshTrigger, referenceDate }: SleepA
   }).filter(d => d.efficiency > 0);
 
   // Calculate key metrics
-  const last7DaysSleeps = sleeps.filter((s: SleepSession) => {
-    const sleepDate = parseISO(s.start_time);
-    return sleepDate >= subDays(now, 7);
-  });
-
   const currentEfficiency = sleepEfficiencyData.length > 0
     ? sleepEfficiencyData[sleepEfficiencyData.length - 1].efficiency
     : 0;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -11,6 +11,9 @@ import { Baby, Droplets, Moon, Scale, Clock, Edit, Trash2, TrendingUp, Loader2 }
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { feedingApi, sleepApi, diaperApi, growthApi } from "../services/api";
+import { sleepLocationValues, sleepQualityValues, sleepTypeValues } from "../types/api";
+import { EMPTY_EDIT_FORM, enumValue, type EditActivityFormData } from "../types/forms";
+import { getApiErrorMessage } from "../services/errors";
 import type {
   FeedingSession,
   SleepSession,
@@ -27,16 +30,123 @@ interface ActivityFeedProps {
   refreshTrigger: number;
 }
 
-interface Activity {
+type Activity = {
   id: string;
-  type: 'feed' | 'nappy' | 'sleep' | 'growth';
   timestamp: Date;
   time: string;
   details: string;
-  notes?: string;
-  // Store original data for editing
-  originalData?: FeedingSession | SleepSession | DiaperEvent | GrowthMeasurement;
-}
+  notes?: string | null;
+} & (
+  | { type: 'feed'; originalData: FeedingSession }
+  | { type: 'sleep'; originalData: SleepSession }
+  | { type: 'nappy'; originalData: DiaperEvent }
+  | { type: 'growth'; originalData: GrowthMeasurement }
+);
+
+const transformFeeding = (feeding: FeedingSession): Activity => {
+  const timestamp = parseISO(feeding.start_time);
+  let details = '';
+
+  if (feeding.feeding_type === 'breast') {
+    const leftDur = feeding.left_breast_duration || 0;
+    const rightDur = feeding.right_breast_duration || 0;
+
+    // Show both breasts if both were used
+    if (leftDur > 0 && rightDur > 0) {
+      const firstBreast = feeding.breast_started === 'left' ? 'Left' : 'Right';
+      const secondBreast = feeding.breast_started === 'left' ? 'Right' : 'Left';
+      const firstDur = feeding.breast_started === 'left' ? leftDur : rightDur;
+      const secondDur = feeding.breast_started === 'left' ? rightDur : leftDur;
+      details = `Breast - ${firstBreast}: ${firstDur}min, then ${secondBreast}: ${secondDur}min (${leftDur + rightDur}min total)`;
+    } else if (leftDur > 0) {
+      details = `Breast - Left: ${leftDur}min`;
+    } else if (rightDur > 0) {
+      details = `Breast - Right: ${rightDur}min`;
+    } else {
+      details = 'Breast feeding';
+    }
+  } else if (feeding.feeding_type === 'bottle') {
+    details = `Bottle - ${feeding.volume_consumed_ml || 0}ml`;
+  } else if (feeding.feeding_type === 'solid') {
+    details = `Solid food - ${feeding.food_items?.join(', ') || 'Unknown'}`;
+  }
+
+  return {
+    id: feeding.id,
+    type: 'feed',
+    timestamp,
+    time: format(timestamp, 'h:mm a'),
+    details,
+    notes: feeding.notes,
+    originalData: feeding,
+  };
+};
+
+const transformSleep = (sleep: SleepSession): Activity => {
+  const timestamp = parseISO(sleep.start_time);
+  const isOngoing = !sleep.end_time;
+
+  let details: string;
+  if (isOngoing) {
+    // Calculate elapsed time for ongoing sleep
+    const startTime = timestamp.getTime();
+    const now = Date.now();
+    const elapsedMins = Math.floor((now - startTime) / (1000 * 60));
+    const hours = Math.floor(elapsedMins / 60);
+    const mins = elapsedMins % 60;
+    details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m so far (ongoing)`;
+  } else {
+    const duration = sleep.duration_minutes || 0;
+    const hours = Math.floor(duration / 60);
+    const mins = duration % 60;
+    details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`;
+  }
+
+  return {
+    id: sleep.id,
+    type: 'sleep',
+    timestamp,
+    time: format(timestamp, 'h:mm a'),
+    details,
+    notes: sleep.notes,
+    originalData: sleep,
+  };
+};
+
+const transformDiaper = (diaper: DiaperEvent): Activity => {
+  const timestamp = parseISO(diaper.timestamp);
+  const types = [];
+  if (diaper.has_urine) types.push('wet');
+  if (diaper.has_stool) types.push('dirty');
+
+  return {
+    id: diaper.id,
+    type: 'nappy',
+    timestamp,
+    time: format(timestamp, 'h:mm a'),
+    details: `Diaper change - ${types.join(' & ') || 'clean'}`,
+    notes: diaper.notes,
+    originalData: diaper,
+  };
+};
+
+const transformGrowth = (growth: GrowthMeasurement): Activity => {
+  const timestamp = parseISO(growth.measurement_date);
+  const details = [];
+  if (growth.weight_kg) details.push(`${growth.weight_kg}kg`);
+  if (growth.length_cm) details.push(`${growth.length_cm}cm`);
+
+  return {
+    id: growth.id,
+    type: 'growth',
+    timestamp,
+    time: format(timestamp, 'h:mm a'),
+    details: `Growth measurement - ${details.join(', ')}`,
+    notes: growth.notes,
+    originalData: growth,
+  };
+};
+
 
 export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -50,15 +160,11 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
 
   // Edit state
   const [activityToEdit, setActivityToEdit] = useState<Activity | null>(null);
-  const [editFormData, setEditFormData] = useState<Record<string, any>>({});
+  const [editFormData, setEditFormData] = useState<EditActivityFormData>(EMPTY_EDIT_FORM);
   const [isEditing, setIsEditing] = useState(false);
   const editDialogRef = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
-    fetchActivities();
-  }, [babyId, refreshTrigger]);
-
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -95,111 +201,11 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [babyId]);
 
-  const transformFeeding = (feeding: FeedingSession): Activity => {
-    const timestamp = parseISO(feeding.start_time);
-    let details = '';
-
-    if (feeding.feeding_type === 'breast') {
-      const leftDur = feeding.left_breast_duration || 0;
-      const rightDur = feeding.right_breast_duration || 0;
-
-      // Show both breasts if both were used
-      if (leftDur > 0 && rightDur > 0) {
-        const firstBreast = feeding.breast_started === 'left' ? 'Left' : 'Right';
-        const secondBreast = feeding.breast_started === 'left' ? 'Right' : 'Left';
-        const firstDur = feeding.breast_started === 'left' ? leftDur : rightDur;
-        const secondDur = feeding.breast_started === 'left' ? rightDur : leftDur;
-        details = `Breast - ${firstBreast}: ${firstDur}min, then ${secondBreast}: ${secondDur}min (${leftDur + rightDur}min total)`;
-      } else if (leftDur > 0) {
-        details = `Breast - Left: ${leftDur}min`;
-      } else if (rightDur > 0) {
-        details = `Breast - Right: ${rightDur}min`;
-      } else {
-        details = 'Breast feeding';
-      }
-    } else if (feeding.feeding_type === 'bottle') {
-      details = `Bottle - ${feeding.volume_consumed_ml || 0}ml`;
-    } else if (feeding.feeding_type === 'solid') {
-      details = `Solid food - ${feeding.food_items?.join(', ') || 'Unknown'}`;
-    }
-
-    return {
-      id: feeding.id,
-      type: 'feed',
-      timestamp,
-      time: format(timestamp, 'h:mm a'),
-      details,
-      notes: feeding.notes,
-      originalData: feeding,
-    };
-  };
-
-  const transformSleep = (sleep: SleepSession): Activity => {
-    const timestamp = parseISO(sleep.start_time);
-    const isOngoing = !sleep.end_time;
-
-    let details: string;
-    if (isOngoing) {
-      // Calculate elapsed time for ongoing sleep
-      const startTime = timestamp.getTime();
-      const now = Date.now();
-      const elapsedMins = Math.floor((now - startTime) / (1000 * 60));
-      const hours = Math.floor(elapsedMins / 60);
-      const mins = elapsedMins % 60;
-      details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m so far (ongoing)`;
-    } else {
-      const duration = sleep.duration_minutes || 0;
-      const hours = Math.floor(duration / 60);
-      const mins = duration % 60;
-      details = `${sleep.sleep_type} sleep - ${hours}h ${mins}m (${sleep.sleep_quality})`;
-    }
-
-    return {
-      id: sleep.id,
-      type: 'sleep',
-      timestamp,
-      time: format(timestamp, 'h:mm a'),
-      details,
-      notes: sleep.notes,
-      originalData: sleep,
-    };
-  };
-
-  const transformDiaper = (diaper: DiaperEvent): Activity => {
-    const timestamp = parseISO(diaper.timestamp);
-    const types = [];
-    if (diaper.has_urine) types.push('wet');
-    if (diaper.has_stool) types.push('dirty');
-
-    return {
-      id: diaper.id,
-      type: 'nappy',
-      timestamp,
-      time: format(timestamp, 'h:mm a'),
-      details: `Diaper change - ${types.join(' & ') || 'clean'}`,
-      notes: diaper.notes,
-      originalData: diaper,
-    };
-  };
-
-  const transformGrowth = (growth: GrowthMeasurement): Activity => {
-    const timestamp = parseISO(growth.measurement_date);
-    const details = [];
-    if (growth.weight_kg) details.push(`${growth.weight_kg}kg`);
-    if (growth.length_cm) details.push(`${growth.length_cm}cm`);
-
-    return {
-      id: growth.id,
-      type: 'growth',
-      timestamp,
-      time: format(timestamp, 'h:mm a'),
-      details: `Growth measurement - ${details.join(', ')}`,
-      notes: growth.notes,
-      originalData: growth,
-    };
-  };
+  useEffect(() => {
+    void fetchActivities();
+  }, [fetchActivities, refreshTrigger]);
 
   // Delete handlers
   const handleDeleteClick = (activity: Activity) => {
@@ -233,9 +239,9 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       }
       toast.success('Activity deleted successfully');
       fetchActivities();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to delete activity:', error);
-      toast.error(`Failed to delete: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to delete: ${getApiErrorMessage(error)}`);
     } finally {
       setIsDeleting(false);
       closeDeleteDialog();
@@ -250,14 +256,15 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
     if (activity.originalData) {
       switch (activity.type) {
         case 'feed': {
-          const feeding = activity.originalData as FeedingSession;
+          const feeding = activity.originalData;
           const feedingDate = parseISO(feeding.start_time);
           setEditFormData({
+            ...EMPTY_EDIT_FORM,
             feedType: feeding.feeding_type,
-            leftBreastDuration: feeding.left_breast_duration || '',
-            rightBreastDuration: feeding.right_breast_duration || '',
+            leftBreastDuration: feeding.left_breast_duration?.toString() ?? '',
+            rightBreastDuration: feeding.right_breast_duration?.toString() ?? '',
             breastStarted: feeding.breast_started || '',
-            volume: feeding.volume_consumed_ml || '',
+            volume: feeding.volume_consumed_ml?.toString() ?? '',
             notes: feeding.notes || '',
             date: format(feedingDate, 'yyyy-MM-dd'),
             time: format(feedingDate, 'HH:mm'),
@@ -265,28 +272,29 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
           break;
         }
         case 'sleep': {
-          const sleep = activity.originalData as SleepSession;
+          const sleep = activity.originalData;
           const sleepStartDate = parseISO(sleep.start_time);
           const sleepEndDate = sleep.end_time ? parseISO(sleep.end_time) : null;
           const durationMins = sleep.duration_minutes || 0;
           setEditFormData({
+            ...EMPTY_EDIT_FORM,
             sleepType: sleep.sleep_type,
             location: sleep.location,
-            sleepQuality: sleep.sleep_quality,
+            sleepQuality: sleep.sleep_quality ?? '',
             notes: sleep.notes || '',
             startDate: format(sleepStartDate, 'yyyy-MM-dd'),
             startTime: format(sleepStartDate, 'HH:mm'),
             endDate: sleepEndDate ? format(sleepEndDate, 'yyyy-MM-dd') : format(sleepStartDate, 'yyyy-MM-dd'),
             endTime: sleepEndDate ? format(sleepEndDate, 'HH:mm') : '',
             duration: durationMins > 0 ? durationMins.toString() : '',
-            lastChanged: null as 'start' | 'end' | 'duration' | null, // Track which field was last changed
           });
           break;
         }
         case 'nappy': {
-          const diaper = activity.originalData as DiaperEvent;
+          const diaper = activity.originalData;
           const diaperDate = parseISO(diaper.timestamp);
           setEditFormData({
+            ...EMPTY_EDIT_FORM,
             hasUrine: diaper.has_urine,
             hasStool: diaper.has_stool,
             notes: diaper.notes || '',
@@ -296,11 +304,12 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
           break;
         }
         case 'growth': {
-          const growth = activity.originalData as GrowthMeasurement;
+          const growth = activity.originalData;
           const growthDate = parseISO(growth.measurement_date);
           setEditFormData({
-            weight: growth.weight_kg || '',
-            length: growth.length_cm || '',
+            ...EMPTY_EDIT_FORM,
+            weight: growth.weight_kg?.toString() ?? '',
+            length: growth.length_cm?.toString() ?? '',
             notes: growth.notes || '',
             date: format(growthDate, 'yyyy-MM-dd'),
             time: format(growthDate, 'HH:mm'),
@@ -315,7 +324,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   const closeEditDialog = () => {
     editDialogRef.current?.close();
     setActivityToEdit(null);
-    setEditFormData({});
+    setEditFormData(EMPTY_EDIT_FORM);
   };
 
   const handleEditSubmit = async () => {
@@ -355,9 +364,9 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
             : undefined;
 
           const updateData: SleepSessionUpdate = {
-            sleep_type: editFormData.sleepType,
-            location: editFormData.location,
-            sleep_quality: editFormData.sleepQuality,
+            sleep_type: editFormData.sleepType || undefined,
+            location: editFormData.location || undefined,
+            sleep_quality: editFormData.sleepQuality || undefined,
             notes: editFormData.notes || undefined,
             start_time: sleepStart,
             end_time: sleepEnd,
@@ -380,7 +389,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
             weight_kg: editFormData.weight ? parseFloat(editFormData.weight) : undefined,
             length_cm: editFormData.length ? parseFloat(editFormData.length) : undefined,
             notes: editFormData.notes || undefined,
-            measurement_date: newTimestamp,
+            measurement_date: editFormData.date || undefined,
           };
           await growthApi.update(activityToEdit.id, updateData);
           break;
@@ -388,9 +397,9 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       }
       toast.success('Activity updated successfully');
       fetchActivities();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to update activity:', error);
-      toast.error(`Failed to update: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to update: ${getApiErrorMessage(error)}`);
     } finally {
       setIsEditing(false);
       closeEditDialog();
@@ -398,7 +407,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
   };
 
   // Reusable date/time picker for edit forms
-  const renderDateTimePicker = () => (
+  const renderDateTimePicker = (dateOnly = false) => (
     <div className="grid grid-cols-2 gap-3">
       <div>
         <Label htmlFor="editDate">Date</Label>
@@ -409,7 +418,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
           onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
         />
       </div>
-      <div>
+      {!dateOnly && <div>
         <Label htmlFor="editTime">Time</Label>
         <Input
           id="editTime"
@@ -417,12 +426,12 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
           value={editFormData.time || ''}
           onChange={(e) => setEditFormData({ ...editFormData, time: e.target.value })}
         />
-      </div>
+      </div>}
     </div>
   );
 
   // Handle sleep time changes with smart recalculation
-  const handleSleepTimeChange = (field: string, value: string) => {
+  const handleSleepTimeChange = (field: 'startDate' | 'startTime' | 'endDate' | 'endTime' | 'duration', value: string) => {
     const newData = { ...editFormData, [field]: value };
 
     // Helper to build Date from date + time strings
@@ -477,7 +486,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
 
     switch (activityToEdit.type) {
       case 'feed': {
-        const feeding = activityToEdit.originalData as FeedingSession;
+        const feeding = activityToEdit.originalData;
         return (
           <div className="space-y-4">
             {renderDateTimePicker()}
@@ -587,7 +596,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                 <Label htmlFor="sleepType">Sleep Type</Label>
                 <Select
                   value={editFormData.sleepType}
-                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepType: value })}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepType: enumValue(value, sleepTypeValues) ?? '' })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -602,7 +611,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                 <Label htmlFor="sleepQuality">Quality</Label>
                 <Select
                   value={editFormData.sleepQuality}
-                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepQuality: value })}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, sleepQuality: enumValue(value, sleepQualityValues) ?? '' })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -620,7 +629,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
               <Label htmlFor="location">Location</Label>
               <Select
                 value={editFormData.location}
-                onValueChange={(value) => setEditFormData({ ...editFormData, location: value })}
+                onValueChange={(value) => setEditFormData({ ...editFormData, location: enumValue(value, sleepLocationValues) ?? '' })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -682,7 +691,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
       case 'growth':
         return (
           <div className="space-y-4">
-            {renderDateTimePicker()}
+            {renderDateTimePicker(true)}
             <div>
               <Label htmlFor="weight">Weight (kg)</Label>
               <Input
@@ -776,7 +785,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
     }
     groups[date].push(activity);
     return groups;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, Activity[]>);
 
   const todayStats = activities.filter(activity => isToday(activity.timestamp));
   const feedCount = todayStats.filter(a => a.type === 'feed').length;
@@ -874,13 +883,13 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                           <div className="flex-1 h-px bg-border"></div>
                           <Badge variant="outline">{dayActivities.length} events</Badge>
                         </div>
-                        
+
                         <div className="space-y-2">
                           {dayActivities
                             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                             .map((activity) => (
-                              <div 
-                                key={activity.id} 
+                              <div
+                                key={activity.id}
                                 className={`p-3 rounded-lg border ${getActivityColor(activity.type)}`}
                               >
                                 <div className="flex items-start justify-between">
@@ -913,6 +922,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                                       variant="ghost"
                                       className="h-8 w-8 p-0"
                                       onClick={() => handleEditClick(activity)}
+                                      aria-label={`Edit ${activity.type} activity`}
                                     >
                                       <Edit className="w-3 h-3" />
                                     </Button>
@@ -921,6 +931,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
                                       variant="ghost"
                                       className="h-8 w-8 p-0 text-destructive"
                                       onClick={() => handleDeleteClick(activity)}
+                                      aria-label={`Delete ${activity.type} activity`}
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </Button>
@@ -1046,7 +1057,7 @@ export function ActivityFeed({ babyId, refreshTrigger }: ActivityFeedProps) {
         className="rounded-lg border bg-background p-0 shadow-lg backdrop:bg-black/50 w-full max-w-lg"
         onClose={() => {
           setActivityToEdit(null);
-          setEditFormData({});
+          setEditFormData(EMPTY_EDIT_FORM);
         }}
       >
         <div className="p-6">

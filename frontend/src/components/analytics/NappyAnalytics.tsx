@@ -35,24 +35,23 @@ export function NappyAnalytics({ babyId, refreshTrigger, referenceDate }: NappyA
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [diapersData, feedingsData] = await Promise.all([
+          diaperApi.getAll({ baby_id: babyId, limit: 2000 }),
+          feedingApi.getAll({ baby_id: babyId, limit: 2000 }),
+        ]);
+        setDiapers(diapersData);
+        setFeedings(feedingsData);
+      } catch (error) {
+        console.error('Failed to fetch nappy data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchData();
   }, [babyId, refreshTrigger]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [diapersData, feedingsData] = await Promise.all([
-        diaperApi.getAll({ baby_id: babyId, limit: 2000 }),
-        feedingApi.getAll({ baby_id: babyId, limit: 2000 }),
-      ]);
-      setDiapers(diapersData);
-      setFeedings(feedingsData);
-    } catch (error) {
-      console.error('Failed to fetch nappy data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading nappy analytics...</div>;
